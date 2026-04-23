@@ -4,47 +4,73 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Multi-agent Architecture Consultant Team. Drop a Markdown problem file into `inbox/`, run `consult.py`, and a pipeline of Claude agents analyzes the problem from multiple architectural lenses, makes a decision, and stores everything in `knowledge-base/`.
+A multi-agent Architecture Consultant system built entirely as Claude Code subagents. Drop a Markdown problem file into `inbox/`, ask Javit to process it, and a pipeline of six agents analyzes the problem from two contrasting architectural lenses, makes a decision, and stores everything in `knowledge-base/`.
 
-## Development Commands
+There is no Python runtime, build step, or CLI. The entire pipeline runs as Claude Code agents.
 
-```bash
-pip install -r requirements.txt       # install dependencies (anthropic, python-frontmatter)
-python consult.py inbox/example-problem.md   # process one file
-python consult.py --all               # process all .md files in inbox/
+## How to Run a Consultation
+
+Describe an architecture problem or point to a file in `inbox/` and invoke the `javit-architecture-lead` agent:
+
+> "Process inbox/my-problem.md"
+
+Javit will orchestrate the full pipeline. The pipeline makes 6 Claude API calls (2 in parallel for the architect evaluations).
+
+## Agent Architecture
+
+All agents live in `.claude/agents/`. The pipeline flows:
+
+```
+javit-architecture-lead  (orchestrator)
+  ├── problem-analyst        → structured problem JSON + tags
+  ├── kb-search-agent        → top-3 related KB entries by tag overlap (no LLM)
+  ├── lens-determiner        → picks 2 contrasting lenses; returns lens_a, lens_b + justifications
+  ├── architect-agent (×2)   → parallel; each evaluates the problem through one lens
+  ├── decision-synthesizer   → picks the best option, blends insights, final code snippet
+  └── kb-writer-agent        → writes P-xxx.md, D-xxx.md, S-xxx/ and updates index.md (no LLM)
 ```
 
-Requires `ANTHROPIC_API_KEY` in the environment.
+ArchitectAgents are always launched in parallel — never sequentially.
 
-## Architecture
+### Agent-to-Agent Contract
 
-```
-consult.py
-  └─► Orchestrator (agents/orchestrator.py)
-        ├─► ProblemAnalystAgent    → structured problem JSON + tags
-        ├─► KBSearchAgent          → finds related KB entries by tag overlap
-        ├─► LensDeterminerAgent    → picks 2 contrasting architectural lenses per problem
-        ├─► ArchitectAgent (×2)    → parallel; each evaluates problem through one lens
-        ├─► DecisionSynthesizerAgent → picks best option, extracts code snippet
-        └─► KBWriterAgent          → writes P-xxx.md, D-xxx.md, S-xxx/ to knowledge-base/
-```
+- `problem-analyst` → outputs a JSON object with: `title`, `problem`, `root_cause`, `summary`, `context`, `constraints`, `tags`, `severity`, `affected_components`
+- `lens-determiner` → receives problem JSON + KB search results; outputs JSON with: `lens_a`, `lens_b`, `lens_a_justification`, `lens_b_justification`, `contrast_rationale`, `kb_influence`
+- `architect-agent` → receives problem JSON + a lens name; outputs JSON with: `lens`, `option_title`, `pros`, `cons`, `rationale`, `complexity`, `code_snippet`
+- `decision-synthesizer` → receives both architect JSONs; outputs JSON with: `chosen_option`, `blended_rationale`, `rejected_options`, `code_snippet`, `confidence`
+- `kb-writer-agent` → receives all of the above including `kb_search_results`; if top problem match `overlap_score >= 0.8` → UPDATE existing P/D/S records in place; otherwise → CREATE new records with next sequential IDs
 
-All agents extend `BaseAgent` (`agents/base.py`), which holds the shared Anthropic client, uses `claude-opus-4-7` with adaptive thinking, applies prompt caching (`cache_control: ephemeral`) on all system prompts, and provides `_call_json()` for structured JSON responses.
-
-### Knowledge Base Layout
+## Knowledge Base Layout
 
 ```
 knowledge-base/
-  index.md                          ← auto-updated table of all records
-  problems/P{NNN}-{slug}.md         ← YAML frontmatter: id, title, date, tags, related_decisions, related_snippets
-  decisions/D{NNN}-{slug}.md        ← YAML frontmatter: id, chosen_option, problem_id, tags, related_snippets
+  index.md                              ← auto-updated master table
+  problems/P{NNN}-{slug}.md            ← YAML frontmatter: id, title, date, tags, related_decisions, related_snippets
+  decisions/D{NNN}-{slug}.md           ← YAML frontmatter: id, chosen_option, problem_id, tags, related_snippets
   snippets/S{NNN}-{slug}/
-    context.md                      ← YAML frontmatter: when_to_use, related_problems, related_decisions
-    code.{ext}                      ← raw code file
+    context.md                          ← YAML frontmatter: when_to_use, related_problems, related_decisions
+    code.{ext}                          ← raw code file
 ```
 
-IDs are zero-padded three-digit sequences (`P001`, `D001`, `S001`). KB search uses tag-intersection scoring — no embeddings.
+IDs are zero-padded three-digit sequences (`P001`, `D001`, `S001`). Matching NNN values across P/D/S from the same pipeline run. KB search uses Jaccard-inspired tag-intersection scoring — no embeddings.
 
-### Inbox
+## Agent Memory
 
-Drop `.md` files into `inbox/` describing the problem. Include code blocks inline if you have problematic code. The system determines which architectural lenses to apply automatically based on the problem content.
+Each agent has an isolated persistent memory directory:
+
+```
+.claude/agent-memory/
+  javit-architecture-lead/
+  problem-analyst/
+  lens-determiner/
+  architect-agent/
+  decision-synthesizer/
+  kb-search-agent/
+  kb-writer-agent/
+```
+
+Memory files use YAML frontmatter (`name`, `description`, `type`) and each agent maintains a `MEMORY.md` index. Memory scope is project-level (shared via version control). Memory types: `user`, `feedback`, `project`, `reference`.
+
+## Lens Pool
+
+`lens-determiner` selects 2 contrasting lenses per problem from: Event-Driven Architecture, CQRS, Hexagonal Architecture, Microservices, Domain-Driven Design, Serverless, Saga Pattern, Strangler Fig, Layered Architecture, Service Mesh, and others. Architect instances are forbidden from drifting outside their assigned lens.
