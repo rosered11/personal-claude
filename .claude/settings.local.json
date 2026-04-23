@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch *)",
+      "PowerShell($py = \"D:\\\\Users\\\\nukrihsana\\\\.pyenv\\\\pyenv-win\\\\versions\\\\3.11.9\\\\python.exe\"; & $py --version; & $py -m py_compile agents/base.py agents/problem_analyst.py agents/lens_determiner.py agents/architect.py agents/decision_synthesizer.py agents/kb_search.py agents/kb_writer.py agents/orchestrator.py consult.py; echo \"All syntax OK\")",
+      "PowerShell($py = \"D:\\\\Users\\\\nukrihsana\\\\.pyenv\\\\pyenv-win\\\\versions\\\\3.11.9\\\\python.exe\"; & $py -c \"from agents.orchestrator import Orchestrator; print\\('imports OK'\\)\" 2>&1)",
+      "PowerShell($py = \"D:\\\\Users\\\\nukrihsana\\\\.pyenv\\\\pyenv-win\\\\versions\\\\3.11.9\\\\python.exe\"; & $py -m pip install -r requirements.txt 2>&1 | Select-Object -Last 10)",
+      "PowerShell($py = \"D:\\\\Users\\\\nukrihsana\\\\.pyenv\\\\pyenv-win\\\\versions\\\\3.11.9\\\\python.exe\"; & $py -c \"from agents.orchestrator import Orchestrator; print\\('imports OK'\\)\")"
+    ]
+  }
+}
