@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A multi-agent Architecture Consultant system built entirely as Claude Code subagents. Drop a Markdown problem file into `inbox/`, ask Javit to process it, and a pipeline of six agents analyzes the problem from two contrasting architectural lenses, makes a decision, and stores everything in `knowledge-base/`.
 
-There is no Python runtime, build step, or CLI. The entire pipeline runs as Claude Code agents.
+The consultation pipeline runs entirely as Claude Code agents with no build step. A separate Notion sync utility (`sync/notion_kb_sync.py`) can push KB records to Notion on demand.
 
 ## How to Run a Consultation
 
@@ -31,6 +31,17 @@ javit-architecture-lead  (orchestrator)
 ```
 
 ArchitectAgents are always launched in parallel — never sequentially.
+
+### Notion Sync (standalone, not part of the consultation pipeline)
+
+```
+notion-sync-agent  (invoke manually after KB changes)
+  └── sync/notion_kb_sync.py  → upserts P/D/S pages to 3 linked Notion databases
+                                 pass 1: create/update pages with properties + body
+                                 pass 2: link all cross-relations (P↔D, P↔S, D↔S)
+```
+
+Invoke: `"sync the knowledge base to Notion"` — the agent checks prerequisites, runs the script, and reports what was created/updated.
 
 ### Agent-to-Agent Contract
 
@@ -67,6 +78,7 @@ Each agent has an isolated persistent memory directory:
   decision-synthesizer/
   kb-search-agent/
   kb-writer-agent/
+  notion-sync-agent/
 ```
 
 Memory files use YAML frontmatter (`name`, `description`, `type`) and each agent maintains a `MEMORY.md` index. Memory scope is project-level (shared via version control). Memory types: `user`, `feedback`, `project`, `reference`.

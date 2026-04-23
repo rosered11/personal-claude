@@ -2,6 +2,10 @@
 
 claude --resume "multi-agent-architect-consultant"
 
+## Sync Notion
+
+python sync/notion_kb_sync.py
+
 
 6 agent classes, 7 runs per pipeline (ArchitectAgent runs twice in parallel).                           
                                                                                                           
