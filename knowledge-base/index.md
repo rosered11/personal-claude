@@ -17,6 +17,7 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [P007](problems/P007-airflow-dag-debug-multi-layer-bugs.md) | Airflow DAG Local Debug Setup — Multi-Layer Bug Discovery in ds_outbound_order | airflow, python, debugging, sqlalchemy, subprocess, locale, windows, etl | medium | D007 | — |
 | [P008](problems/P008-orderjda-n1-savechanges-in-loop.md) | OrderJda ETL — N+1 SELECT + SaveChanges-in-Loop + Long Transaction on PostgreSQL | ef-core, n+1, etl, transaction, batch-processing, dotnet, postgresql, fk-constraint | high | D008 | S008 |
 | [P009](problems/P009-airflow-subprocess-timeout-hang.md) | Airflow DAG — Dead subprocess.TimeoutExpired Branch and No Hard Subprocess Timeout | airflow, python, subprocess, timeout, orchestration, threading, dead-code | high | D009 | S009 |
+| [P010](problems/P010-order-concurrent-running-number-idempotency.md) | Order Service — Concurrent Running-Number Race + Missing Idempotency on CreateOrder and ProcessActivity Events | ef-core, concurrency, optimistic-locking, running-number, idempotency, dotnet, mssql, integration-events, duplicate-order, null-safety, microservices | high | D015 | S015 |
 
 ---
 
@@ -38,6 +39,7 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [D012](decisions/D012-distributed-transaction-strategy.md) | Distributed Transaction Strategy | Tiered strategy: local TX → Saga → TC/C | — | distributed, transaction, saga, tcc, consistency, microservices | S012 |
 | [D013](decisions/D013-rate-limiter-algorithm-selection.md) | Rate Limiter Algorithm Selection | Token Bucket for burst-friendly; Sliding Window Counter for high-accuracy | — | rate-limiting, token-bucket, sliding-window, redis, api | S010 |
 | [D014](decisions/D014-distributed-id-generation-strategy.md) | Distributed ID Generation — Snowflake vs UUID v4 | Snowflake ID for distributed time-sortable; UUID v4 for fully random | — | id-generation, snowflake, uuid, distributed, scalability | S011 |
+| [D015](decisions/D015-mssql-sequence-idempotency-order-service.md) | MSSQL SEQUENCE + Idempotency Key for Order Service Running-Number Race | MSSQL SEQUENCE for running-number + D012 idempotency key for event consumers + API idempotency header | P010 | ef-core, concurrency, optimistic-locking, running-number, idempotency, dotnet, mssql, integration-events | S015 |
 
 ---
 
@@ -55,7 +57,8 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [S011](snippets/S011-snowflake-id-generator/) | Snowflake ID Generator | Go | — | D014 |
 | [S012](snippets/S012-idempotency-key-table/) | Idempotency Key Table | SQL | — | D012 |
 | [S014](snippets/S014-ef-core-compile-query-static/) | EF.CompileQuery Static Field | C# | P001 | D001 |
+| [S015](snippets/S015-mssql-sequence-idempotency-order/) | MSSQL SEQUENCE + Idempotency Guard + Null Safety for Order Service | C# | P010 | D015 |
 
 ---
 
-_Last updated: 2026-04-23 — seeded from KOS incidents I1–I9, decisions D1–D21, tech assets TA1–TA25_
+_Last updated: 2026-04-24 — added P010/D015/S015 from order-service log analysis (concurrent running-number race + idempotency)_
