@@ -41,8 +41,16 @@ The sync script is at `sync/notion_kb_sync.py`. It uses:
 ### Check prerequisites first
 
 1. Verify the script exists: `sync/notion_kb_sync.py`
-2. Check for `NOTION_TOKEN` env var
+2. Check `sync/.env` for `NOTION_TOKEN` — **always read credentials from this file, never require shell env vars**. The script auto-loads `sync/.env` at startup via `os.environ.setdefault`.
 3. Check for `sync/notion_kb_config.json` — if missing, guide through setup
+
+If `sync/.env` is missing or `NOTION_TOKEN` is not in it, tell the user to add it to `sync/.env`:
+
+```
+NOTION_TOKEN=secret_xxx
+```
+
+Do **not** ask the user to `export` env vars — the file is the canonical source.
 
 ### First-time setup
 
@@ -52,15 +60,17 @@ If `sync/notion_kb_config.json` does not exist:
 Step 1: Create a Notion integration
   → https://www.notion.so/profile/integrations
   → Copy the integration token (secret_xxx)
-  → export NOTION_TOKEN=secret_xxx
+  → Add to sync/.env:
+      NOTION_TOKEN=secret_xxx
 
 Step 2: Create/open a Notion page to hold the databases
   → Share that page with your integration
   → Copy the page ID from the URL (the 32-char hex after the last /)
-  → export NOTION_PARENT_PAGE_ID=<page_id>
+  → Add to sync/.env:
+      NOTION_PARENT_PAGE_ID=<page_id>
 
 Step 3: Run setup
-  → python sync/notion_kb_sync.py --setup
+  → .venv/Scripts/python sync/notion_kb_sync.py --setup
 ```
 
 Then verify `sync/notion_kb_config.json` was created with all three DB IDs.
@@ -69,8 +79,7 @@ Then verify `sync/notion_kb_config.json` was created with all three DB IDs.
 
 ```bash
 cd D:\workspace\personal-claude
-pip install -r sync/requirements.txt
-python sync/notion_kb_sync.py
+.venv/Scripts/python sync/notion_kb_sync.py
 ```
 
 This runs in two passes:
@@ -80,9 +89,9 @@ This runs in two passes:
 ### Partial sync
 
 ```bash
-python sync/notion_kb_sync.py --db p    # problems only (no relations pass)
-python sync/notion_kb_sync.py --db d    # decisions only
-python sync/notion_kb_sync.py --db s    # snippets only
+.venv/Scripts/python sync/notion_kb_sync.py --db p    # problems only (no relations pass)
+.venv/Scripts/python sync/notion_kb_sync.py --db d    # decisions only
+.venv/Scripts/python sync/notion_kb_sync.py --db s    # snippets only
 ```
 
 ### Rebuild page bodies
@@ -90,8 +99,8 @@ python sync/notion_kb_sync.py --db s    # snippets only
 Use when KB file content changed and you want Notion pages re-rendered:
 
 ```bash
-python sync/notion_kb_sync.py --rebuild-body         # all records
-python sync/notion_kb_sync.py --db d --rebuild-body  # decisions only
+.venv/Scripts/python sync/notion_kb_sync.py --rebuild-body         # all records
+.venv/Scripts/python sync/notion_kb_sync.py --db d --rebuild-body  # decisions only
 ```
 
 Note: `--rebuild-body` deletes all existing blocks and re-creates them. It makes ~3× more API calls. On the full KB (~37 records × ~25 blocks each ≈ ~900 API calls at 0.35s/call ≈ 5 minutes).
@@ -108,7 +117,7 @@ IDs are stable — adding new KB records won't disturb existing Notion pages.
 
 | Error | Cause | Fix |
 |---|---|---|
-| `NOTION_TOKEN not set` | Missing env var | `export NOTION_TOKEN=secret_xxx` |
+| `NOTION_TOKEN not set` | Missing from `sync/.env` | Add `NOTION_TOKEN=secret_xxx` to `sync/.env` |
 | `No config found` | `notion_kb_config.json` missing | Run `--setup` |
 | `401 Unauthorized` | Token expired or wrong | Regenerate integration token |
 | `403 Forbidden` | Page not shared with integration | Share the parent page with the integration in Notion UI |
@@ -133,7 +142,7 @@ If any record failed to sync, report its ID and the error, and note whether the 
 
 - The sync is **idempotent** — safe to run multiple times. Existing pages are updated, not duplicated.
 - `sync/notion_kb_config.json` stores only DB IDs (not the token) — safe to commit to version control.
-- The `NOTION_TOKEN` must **never** be stored in files or printed to output.
+- `NOTION_TOKEN` lives in `sync/.env` (gitignored). Never print it to output.
 - After `kb-writer-agent` runs and adds new KB records, run this agent to push them to Notion.
 - The sync script reads directly from `knowledge-base/` files — no intermediate state.
 
