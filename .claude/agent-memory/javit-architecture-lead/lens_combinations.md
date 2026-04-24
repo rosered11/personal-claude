@@ -70,6 +70,18 @@ Derived from KOS P# patterns, D# decisions, and incident post-mortems. These pai
 
 ---
 
+## Airflow Orchestration Chain Problems
+
+**Tags:** `airflow`, `python`, `orchestration`, `trigger-dagrun`, `xcom`, `child-dag`, `dag-dependency`
+
+**Lens pair:** Saga Pattern vs Hexagonal Architecture
+
+**Contrast rationale:** Saga asks "does each step in the trigger chain have explicit failure boundaries and compensation?" — exposes missing short-circuit and silent failure propagation. Hexagonal asks "are the adapter contracts (XCom, Jinja, child DAG availability) explicitly validated?" — exposes render_template_as_native_obj type violations and missing child DAG health checks. Together: failure propagation vs contract soundness.
+
+**First used:** P012 / D017 — confirmed as high-quality contrast for this domain.
+
+---
+
 ## When KB Search Returns High Overlap (≥ 0.8 Jaccard)
 
 If kb-search-agent returns a result with overlap_score ≥ 0.8, instruct lens-determiner to:

@@ -77,3 +77,13 @@ These decisions are in the knowledge base and represent validated, production-te
 **Trigger:** Any multi-service operation needing coordinated state change.
 
 **KB:** D012, S012
+
+---
+
+## D017 — TriggerDagRunOperator Chain "No Status" Fix
+
+**Established:** When child tasks show "no status" in a TriggerDagRunOperator chain: (1) check extract_task logs first — failure propagates silently; (2) add assertion task before extract to fail fast on paused/missing child DAGs; (3) add ShortCircuitOperator after extract to skip trigger chain cleanly on empty batch; (4) add `or ''` guard in Jinja XCom expressions under `render_template_as_native_obj=True`; (5) remove `on_failure_callback` from `default_args` — keep only at DAG level.
+
+**Trigger:** Any Airflow DAG using TriggerDagRunOperator where downstream tasks show "no status" or child DAGs fail silently.
+
+**KB:** P012, D017, S017
