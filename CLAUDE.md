@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A multi-agent Architecture Consultant system built entirely as Claude Code subagents. Drop a Markdown problem file into `inbox/`, ask Javit to process it, and a pipeline of six agents analyzes the problem from two contrasting architectural lenses, makes a decision, and stores everything in `knowledge-base/`.
 
-The consultation pipeline runs entirely as Claude Code agents with no build step. A separate Notion sync utility (`sync/notion_kb_sync.py`) can push KB records to Notion on demand.
+The consultation pipeline runs entirely as Claude Code agents with no build step. A separate Notion sync utility (`sync/notion_kb_sync.py`) can push KB records to Notion on demand. A `career-mentor` agent tracks the user's architecture learning roadmap and can be invoked after any consultation to extract learning opportunities.
 
 ## How to Run a Consultation
 
@@ -27,7 +27,8 @@ javit-architecture-lead  (orchestrator)
   ├── lens-determiner        → picks 2 contrasting lenses; returns lens_a, lens_b + justifications
   ├── architect-agent (×2)   → parallel; each evaluates the problem through one lens
   ├── decision-synthesizer   → picks the best option, blends insights, final code snippet
-  └── kb-writer-agent        → writes P-xxx.md, D-xxx.md, S-xxx/ and updates index.md (no LLM)
+  ├── kb-writer-agent        → writes P-xxx.md, D-xxx.md, S-xxx/ and updates index.md (no LLM)
+  └── career-mentor          → extracts learning opportunities; updates roadmaps/architecture-transition.md
 ```
 
 ArchitectAgents are always launched in parallel — never sequentially.
@@ -50,6 +51,7 @@ Invoke: `"sync the knowledge base to Notion"` — the agent checks prerequisites
 - `architect-agent` → receives problem JSON + a lens name; outputs JSON with: `lens`, `option_title`, `pros`, `cons`, `rationale`, `complexity`, `code_snippet`
 - `decision-synthesizer` → receives both architect JSONs; outputs JSON with: `chosen_option`, `blended_rationale`, `rejected_options`, `code_snippet`, `confidence`
 - `kb-writer-agent` → receives all of the above including `kb_search_results`; if top problem match `overlap_score >= 0.8` → UPDATE existing P/D/S records in place; otherwise → CREATE new records with next sequential IDs
+- `career-mentor` → receives problem JSON, lens names, decision JSON, and KB IDs written; updates `roadmaps/architecture-transition.md` with new exposure log entries and learning recommendations
 
 ## Knowledge Base Layout
 
@@ -79,6 +81,7 @@ Each agent has an isolated persistent memory directory:
   kb-search-agent/
   kb-writer-agent/
   notion-sync-agent/
+  career-mentor/
 ```
 
 Memory files use YAML frontmatter (`name`, `description`, `type`) and each agent maintains a `MEMORY.md` index. Memory scope is project-level (shared via version control). Memory types: `user`, `feedback`, `project`, `reference`.
