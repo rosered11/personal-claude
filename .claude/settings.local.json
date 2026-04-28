@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(grep -E \"\\\\.\\(md|json|txt\\)$\")"
+      "Bash(grep -E \"\\\\.\\(md|json|txt\\)$\")",
+      "Bash(python3 *)",
+      "Bash(.venv/Scripts/python *)",
+      "Bash(python kb_score_temp.py)"
     ]
   }
 }

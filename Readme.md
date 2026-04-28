@@ -1,6 +1,7 @@
 # Readme
 
-claude --resume "multi-agent-architect-consultant"
+
+claude --resume 697d0038-30c8-436e-89b0-f21019633e46 -> OMS
 
 ## Sync Notion
 

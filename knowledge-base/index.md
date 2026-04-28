@@ -20,6 +20,9 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [P010](problems/P010-order-concurrent-running-number-idempotency.md) | Order Service — Concurrent Running-Number Race + Missing Idempotency on CreateOrder and ProcessActivity Events | ef-core, concurrency, optimistic-locking, running-number, idempotency, dotnet, mssql, integration-events, duplicate-order, null-safety, microservices | high | D015 | S015 |
 | [P011](problems/P011-airflow-dag-pre-subprocess-batch-id-mutation.md) | Airflow DAG — spc_batch_id Incremented Before Subprocess Runs, No SQL Parameterization | airflow, python, etl, mysql, subprocess, correctness, sql-injection, orchestration, batch-processing | high | D016 | S016 |
 | [P012](problems/P012-airflow-child-dag-no-status-trigger-chain.md) | Airflow DAG — Child DAGs Show 'No Status' After Main DAG Completes | airflow, python, orchestration, trigger-dagrun, xcom, jinja, child-dag, dag-dependency, etl, debugging | high | D017 | S017 |
+| [P013](problems/P013-oms-greenfield-order-lifecycle-integration.md) | OMS Design — Greenfield Order Lifecycle Orchestrator with Multi-System Integration | oms, order-management, microservices, distributed, integration, dotnet, postgresql, aks, event-driven, state-machine, cqrs, domain-driven-design, api, batch-processing, phased-rollout | high | D018 | S018 |
+| [P014](problems/P014-oms-extensions-package-returns-hold-multichannel.md) | OMS Architecture Extensions — Package Tracking, Returns, Hold, and Multi-Channel Order Channels | oms, order-lifecycle, ddd, aggregate, state-machine, returns, exception-handling, multi-channel, package-tracking, fulfillment, cqrs, outbox, domain-driven-design, dotnet, postgresql | high | D019 | S019 |
+| [P015](problems/P015-oms-modular-monolith-module-boundary-deployment.md) | OMS System Architecture — Confirmed Modular Monolith with DDD + CQRS + Outbox + ACL for 70K Order Lines/Day | oms, modular-monolith, order-management, domain-driven-design, cqrs, outbox, anti-corruption-layer, state-machine, dotnet, postgresql, redis, kubernetes, integration, webhook, multi-channel, security, jwt, hmac | high | D020 | S020 |
 
 ---
 
@@ -44,6 +47,9 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [D015](decisions/D015-mssql-sequence-idempotency-order-service.md) | MSSQL SEQUENCE + Idempotency Key for Order Service Running-Number Race | MSSQL SEQUENCE for running-number + D012 idempotency key for event consumers + API idempotency header | P010 | ef-core, concurrency, optimistic-locking, running-number, idempotency, dotnet, mssql, integration-events | S015 |
 | [D016](decisions/D016-deferred-batch-id-commit-parameterized-sql.md) | Deferred Batch ID Commit + Parameterized SQL for Airflow DAG | Defer spc_batch_id UPDATE to post-subprocess success + parameterize all SQL | P011 | airflow, python, etl, mysql, subprocess, correctness, sql-injection, orchestration, batch-processing, saga | S016 |
 | [D017](decisions/D017-child-dag-assertion-shortcircuit-callback-dedup.md) | Child DAG Assertion Task + ShortCircuitOperator + Callback Dedup | Hexagonal adapter hardening + Saga short-circuit | P012 | airflow, python, orchestration, trigger-dagrun, xcom, jinja, child-dag, dag-dependency, etl, debugging | S017 |
+| [D018](decisions/D018-oms-ddd-cqrs-aggregate-outbox.md) | OMS Architecture — DDD Bounded Context + CQRS Read/Write Split + Outbox Integration | OMS as DDD Bounded Context with CQRS Read/Write Split + Outbox Integration | P013 | oms, order-management, domain-driven-design, cqrs, state-machine, outbox, integration, dotnet, postgresql, aks | S018 |
+| [D019](decisions/D019-oms-extended-aggregate-package-hold-returns.md) | OMS Extended Aggregate — Package Value Object, OnHold Snapshot, Returns Sub-Machine, Multi-Channel | Extended Order Aggregate with Package Value Object, OnHold State Snapshot, and In-Aggregate Returns Sub-Machine | P014 | oms, order-lifecycle, ddd, aggregate, state-machine, returns, exception-handling, multi-channel, package-tracking, fulfillment, cqrs, outbox, domain-driven-design, dotnet, postgresql | S019 |
+| [D020](decisions/D020-oms-modular-monolith-boundary-enforcement-outbox-worker.md) | OMS Modular Monolith — Module Boundary Enforcement + Outbox Worker Graceful Shutdown | Disciplined Modular Monolith with Enforced Module Boundaries, Schema Isolation, and Graceful-Shutdown Outbox Worker | P015 | oms, modular-monolith, order-management, domain-driven-design, cqrs, outbox, anti-corruption-layer, state-machine, dotnet, postgresql, redis, kubernetes, integration, webhook, multi-channel, security, jwt, hmac | S020 |
 
 ---
 
@@ -64,7 +70,10 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [S015](snippets/S015-mssql-sequence-idempotency-order/) | MSSQL SEQUENCE + Idempotency Guard + Null Safety for Order Service | C# | P010 | D015 |
 | [S016](snippets/S016-deferred-batch-id-saga-dag/) | Deferred Batch ID Commit (Saga-Structured Airflow DAG) | Python | P011 | D016 |
 | [S017](snippets/S017-airflow-child-dag-assertion-shortcircuit/) | Child DAG Assertion + ShortCircuitOperator + Jinja or-guard | Python | P012 | D017 |
+| [S018](snippets/S018-oms-ddd-aggregate-cqrs-handler/) | OMS Order Aggregate (DDD State Machine) + CQRS CreateOrderHandler | C# | P013 | D018 |
+| [S019](snippets/S019-oms-extended-aggregate-package-hold-returns/) | OMS Extended Order Aggregate — Package, OnHold, Returns, PackageLost, Multi-Channel | C# | P014, P013 | D019, D018 |
+| [S020](snippets/S020-oms-outbox-worker-graceful-shutdown-skip-locked/) | OMS Outbox Worker — FOR UPDATE SKIP LOCKED + Graceful Shutdown + ACL Dispatcher | C# | P015 | D020, D018 |
 
 ---
 
-_Last updated: 2026-04-24 — added P012/D017/S017 from child-dags-not-work.md (TriggerDagRunOperator chain no-status + render_template_as_native_obj XCom type contract)_
+_Last updated: 2026-04-28 — added P015/D020/S020 from oms-system-architecture.md (OMS full system architecture confirmation — Modular Monolith module topology, deployment, security model, Outbox worker graceful shutdown + FOR UPDATE SKIP LOCKED; extends D018/D019)_

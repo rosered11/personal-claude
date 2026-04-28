@@ -199,11 +199,17 @@ def load_snippets() -> list[Snippet]:
 
         language = fm.get("language", code_ext)
 
+        raw_wtu = fm.get("when_to_use", "")
+        if isinstance(raw_wtu, list):
+            when_to_use_str = "; ".join(str(item) for item in raw_wtu)
+        else:
+            when_to_use_str = str(raw_wtu) if raw_wtu else ""
+
         out.append(Snippet(
             id=str(fm.get("id", snippet_dir.name[:4])),
             title=title,
             language=language,
-            when_to_use=fm.get("when_to_use", ""),
+            when_to_use=when_to_use_str,
             related_problems=as_list(fm.get("related_problems")),
             related_decisions=as_list(fm.get("related_decisions")),
             body=body,
