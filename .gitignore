@@ -1,3 +1,5 @@
 ﻿**/*__pycache__
 sync/.env
 sync/notion_kb_hashes.json
+**/bin
+**/obj

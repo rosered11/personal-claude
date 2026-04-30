@@ -9,10 +9,10 @@
 
 | Layer | Choice | Reason |
 |---|---|---|
-| Language | C# (.NET 8) | Strong type system for DDD aggregates; native async; production-proven for OMS workloads |
+| Language | C# (.NET 10) | Strong type system for DDD aggregates; native async; production-proven for OMS workloads |
 | Web Framework | ASP.NET Core Web API | Minimal API for performance; middleware pipeline for auth/validation |
 | Database | PostgreSQL 16 | JSONB for outbox payload; table partitioning; row-level locking on aggregate writes |
-| ORM | EF Core 8 (code-first) | Per-schema DbContext per module; owned entities for value objects |
+| ORM | EF Core 9 (code-first) | Per-schema DbContext per module; owned entities for value objects |
 | Cache | Redis 7 | Read projections (order summaries, status lookups); TTL-based invalidation |
 | Auth | JWT + OAuth2 (internal) | Per-channel token claims; service-to-service shared secret for WMS/TMS/POS |
 | Container | Docker + Docker Compose (dev) / Kubernetes (prod) | Single deployable image; sidecar for outbox worker |
@@ -152,6 +152,10 @@ Each module has its **own DB schema** and its **own DbContext**. Cross-module ac
 │  │  DeliverySlot     │  │  OrderFee         │  │  Refund         │  │
 │  │  OrderHold        │  │  OrderPromotion   │  │                 │  │
 │  │  order_outbox     │  │                   │  │                 │  │
+│  │  order_status_    │  │                   │  │                 │  │
+│  │    history        │  │                   │  │                 │  │
+│  │  order_inbound_   │  │                   │  │                 │  │
+│  │    logs           │  │                   │  │                 │  │
 │  └──────────────────┘  └──────────────────┘  └─────────────────┘  │
 │                                                                     │
 │  ┌──────────────────────────────────────────────────────────────┐  │
@@ -195,11 +199,15 @@ sequenceDiagram
     participant EXT as External System
 
     CMD->>AGG: ConfirmPick(orderId, pickedLines)
-    AGG->>AGG: Raise PickConfirmed domain event
+    AGG->>AGG: Raise PickConfirmedEvent + record OrderStatusHistory
+    Note over CMD,DB: Inbound log staged BEFORE save (if from external system)
+    CMD->>DB: Stage InboundLog (source=WMS, event=PickConfirmed) to change tracker
+    CMD->>DB: Stage OrderOutbox entries (PickConfirmedEvent → POS) to change tracker
     CMD->>DB: BEGIN TRANSACTION
-    CMD->>DB: UPDATE orders SET status = PickConfirmed
-    CMD->>DB: INSERT INTO order_outbox (event_type, payload, status=Pending)
-    CMD->>DB: COMMIT
+    CMD->>DB: UPDATE orders (status + status_history)
+    CMD->>DB: INSERT INTO order_webhook_logs
+    CMD->>DB: INSERT INTO order_outbox (status=Pending)
+    CMD->>DB: COMMIT — all three committed atomically
 
     loop every 5 seconds
         WORKER->>DB: SELECT * FROM order_outbox WHERE status=Pending AND next_retry_at <= now() LIMIT 50
@@ -229,18 +237,48 @@ Each adapter translates between OMS domain language and external system contract
 External systems call back into OMS via the Webhook Controller:
 
 ```
-POST /webhooks/wms/pick-confirmed      → WmsPickConfirmedCommandHandler
-POST /webhooks/tms/package-dispatched  → TmsPackageDispatchedCommandHandler
-POST /webhooks/tms/package-delivered   → TmsPackageDeliveredCommandHandler
-POST /webhooks/tms/package-lost        → TmsPackageLostCommandHandler
-POST /webhooks/wms/put-away-confirmed  → WmsPutAwayConfirmedCommandHandler
+POST /webhooks/wms/pick-confirmed      → ConfirmPickCommand       (source=WMS)
+POST /webhooks/wms/put-away-confirmed  → ConfirmPutAwayCommand    (source=WMS)
+POST /webhooks/tms/package-dispatched  → PackageOutForDeliveryCommand (source=TMS)
+POST /webhooks/tms/package-delivered   → PackageDeliveredCommand  (source=TMS)
+POST /webhooks/tms/package-lost        → PackageLostCommand       (source=TMS)
+POST /webhooks/pos/recalculation-result → ApplyPosRecalculationCommand (source=POS)
 ```
 
 All webhook endpoints:
-1. Validate HMAC signature (shared secret per integration)
-2. Deserialise payload via ACL adapter (translate external → internal)
-3. Dispatch internal command to appropriate command handler
-4. Return `202 Accepted` immediately — processing is async
+1. Log the inbound event (structured `ILogger` with `orderId`, `source`, contextual data)
+2. Deserialise payload into an internal command
+3. Dispatch to MediatR command handler
+4. Return `202 Accepted` immediately — processing is synchronous but lightweight
+
+Each inbound command handler:
+1. Stages an `OrderWebhookLog` entry (`source_system`, `event_type`, `detail`, `received_at`) via `IWebhookEventLogger.Stage()`
+2. Applies the domain transition (`order.ConfirmPick(...)`, etc.)
+3. Stages outbox entries for any resulting domain events (atomically)
+4. Calls `orderRepository.SaveAsync()` — commits all three in one transaction
+
+### 5.4 Outbound Event Routing
+
+`OutboxEventTargetMapper` defines which external systems receive each domain event:
+
+| Domain Event | Target Systems |
+|---|---|
+| `OrderCreatedEvent` | WMS |
+| `BookingConfirmedEvent` | WMS |
+| `PickStartedEvent` | WMS |
+| `PickConfirmedEvent` | POS |
+| `OrderPackedEvent` | TMS |
+| `PackagesAssignedEvent` / `ReassignedEvent` | TMS |
+| `OrderOnHoldEvent` | WMS, TMS |
+| `OrderReleasedEvent` | WMS, TMS |
+| `OrderCancelledEvent` | WMS, TMS, POS |
+| `OrderRescheduledEvent` | TMS |
+| `OrderLinesModifiedEvent` | WMS, POS |
+| `ReadyForCollectionEvent` | POS |
+| `OrderCollectedEvent` / `DeliveredEvent` | POS |
+| `InvoiceGeneratedEvent` / `PaymentNotifiedEvent` | POS |
+| `ReturnRequestedEvent` | TMS |
+| `PutAwayConfirmedEvent` | POS |
 
 ---
 
@@ -264,6 +302,7 @@ Queries never touch the write tables directly. They read from:
 1. **Redis** — `order_summary:{order_id}` (hot path, TTL 5 minutes)
 2. **order_summary_view** (PostgreSQL read-optimised view) — cache miss fallback
 3. **Paginated list queries** — hit DB with covering indexes
+4. **Timeline query** — `GET /orders/{id}/timeline` merges `order_status_history` + `order_webhook_logs` + `order_outbox` into a single chronological view with three entry types: `Domain`, `Inbound`, `Outbound`
 
 ```sql
 -- Materialised view for reads (refreshed by trigger or outbox worker)

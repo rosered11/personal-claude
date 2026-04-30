@@ -1,7 +1,7 @@
 # Readme
 
 
-claude --resume 697d0038-30c8-436e-89b0-f21019633e46 -> OMS
+claude --resume "clarify-inbound-outbound-terminology" -> OMS
 
 ## Sync Notion
 

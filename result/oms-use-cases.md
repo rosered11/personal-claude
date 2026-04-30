@@ -14,11 +14,22 @@ Derived from the Phase 1 System Integration Diagram.
 | Proxy Service | Routes requests between Gateway and Sprint Connect |
 | Sprint Connect | Integration hub + OMS — owns order lifecycle and orchestration |
 | File Gateway | Batch file transfers |
-| WMS | Warehouse Management — picking/packing |
+| WMS | Warehouse Management — picking/packing/receiving |
 | TMS | Transport Management — delivery/scheduling |
 | POS | Point-of-Sale — pricing & recalculation |
 | Backend | Handles non-rolled-out stores |
 | STS | Batch source for invoices, credit notes, item master |
+
+### Terminology: Outbound vs Inbound
+
+> **Outbound Order** — goods leaving the warehouse to a customer (delivery, click & collect, express).
+> **Inbound Order** — goods arriving at the warehouse: customer returns, supplier deliveries (PO receipt), inter-store stock transfers, and damaged packages returned by drivers.
+>
+> In this document "inbound/outbound" always refers to the warehouse/logistics direction, not to API direction. API webhooks received from external systems are labelled "webhook received" in diagrams and `order_webhook_logs` in the data model.
+
+---
+
+## Outbound Order Flow
 
 ---
 
@@ -68,16 +79,18 @@ Same as UC1 through Step 9, then diverges:
 
 ## UC3 — Order is Cancelled
 
-**Actors:** Customer or Store Staff, Sprint Connect, TMS
+**Actors:** Customer or Store Staff, Sprint Connect, WMS, TMS, POS
 
 | Step | Who | What happens |
 |---|---|---|
 | 1 | Customer / Staff | Triggers cancellation (can happen at any lifecycle stage) |
-| 2 | Sprint Connect | Cancels order internally, raises OrderCancelled event |
-| 3 | Sprint Connect → TMS | TMS notified to cancel any scheduled delivery slot |
-| 4 | Sprint Connect | If pre-paid: triggers Credit Note flow (see UC5) |
+| 2 | Sprint Connect | Cancels order internally, raises `OrderCancelledEvent` |
+| 3 | Sprint Connect → WMS | WMS notified to abort any in-progress picking task |
+| 4 | Sprint Connect → TMS | TMS notified to release any scheduled delivery slot |
+| 5 | Sprint Connect → POS | POS notified to void any pending recalculation or invoice |
+| 6 | Sprint Connect | If pre-paid: triggers Credit Note flow (see UC5) |
 
-**Key insight:** Cancellation is a single event that fans out — TMS must release the slot, and the payment system must be notified if money already moved.
+**Key insight:** Cancellation is a single event that fans out to all three external systems — each must abort its in-flight task. The `OrderCancelledEvent` is routed via the Outbox to `WMS`, `TMS`, and `POS` in a single commit.
 
 ---
 
@@ -253,7 +266,7 @@ Same as UC1 through Step 9, then diverges:
 
 ## UC12 — Modify Order Lines After Placement
 
-**Actors:** Customer or Store Staff, Sprint Connect, POS
+**Actors:** Customer or Store Staff, Sprint Connect, WMS, POS
 **Allowed states:** `Pending`, `BookingConfirmed` — rejected after `PickStarted`
 
 | Step | Who | What happens |
@@ -261,13 +274,14 @@ Same as UC1 through Step 9, then diverges:
 | 1 | Customer / Staff | Requests modification — add lines, remove lines, or change quantity |
 | 2 | Sprint Connect | Guard check: Order must be in `Pending` or `BookingConfirmed` |
 | 3 | Sprint Connect | Applies `OrderLineModification` entries to Order Lines |
-| 4 | Sprint Connect | Raises `OrderLinesModified` event |
-| 5 | Sprint Connect → POS | POS Recalculation triggered on updated lines |
-| 6 | POS → Sprint Connect | Recalculated prices returned |
-| 7 | Sprint Connect → Gateway | Updated total notified to customer |
-| 8 | Sprint Connect | If PrePaid and total increased: re-authorize payment delta |
+| 4 | Sprint Connect | Raises `OrderLinesModifiedEvent` → outbox → WMS + POS |
+| 5 | Sprint Connect → WMS | WMS receives updated SKU list so pick task reflects latest items |
+| 6 | Sprint Connect → POS | POS Recalculation triggered on updated lines |
+| 7 | POS → Sprint Connect | Recalculated prices returned via webhook |
+| 8 | Sprint Connect → Gateway | Updated total notified to customer |
+| 9 | Sprint Connect | If PrePaid and total increased: re-authorize payment delta |
 
-**Key insight:** Once `PickStarted`, the picker is already working — modifications are rejected. POS Recalculation must re-run after every modification because promotions or bundle pricing may shift.
+**Key insight:** WMS and POS must both receive line modifications — WMS needs the current item list before picking begins, and POS must recalculate prices because promotions or bundle pricing may shift.
 
 ---
 
@@ -292,67 +306,25 @@ Same as UC1 through Step 9, then diverges:
 
 ---
 
-## UC17 — Put Away (Returned Items)
-
-**Actors:** WMS, Warehouse Staff, Sprint Connect
-**Trigger:** Returned items arrive at the warehouse receiving dock after return pickup.
-**Precondition:** Return is in `PickedUp` state — TMS has collected items from customer.
-
-| Step | Who | What happens |
-|---|---|---|
-| 1 | WMS | Items arrive at warehouse receiving dock — `ReceivedAtWarehouse` |
-| 2 | WMS → Sprint Connect | `ReceivedAtWarehouse(returnId)` — return status updated |
-| 3 | Warehouse Staff | Inspects each return item — assigns `ItemCondition`: `Resellable`, `Damaged`, or `Dispose` |
-| 4 | WMS | For `Resellable` items: assigns `StorageLocation (Sloc)` based on category and availability |
-| 5 | Warehouse Staff | Physically moves each item to its assigned Sloc |
-| 6 | WMS | Confirms put away — inventory count updated in WMS |
-| 7 | WMS → Sprint Connect | `PutAwayConfirmed(returnId, items)` — carries condition and Sloc per item |
-| 8 | Sprint Connect | `Resellable` items → `return_items.put_away_status = Restocked` |
-| 9 | Sprint Connect | `Damaged` / `Dispose` items → `return_items.put_away_status = Disposed` |
-| 10 | Sprint Connect | Writes `return_put_away_logs` per item for audit |
-| 11 | Sprint Connect | Return status → `PutAway` |
-| 12 | Sprint Connect | If refund not yet issued → triggers `RefundProcessed` |
-
-**Key insight:** Put Away is WMS-owned — Sprint Connect only receives the confirmation event. `ItemCondition` determines whether an item goes back to stock (`Restocked`) or is written off (`Disposed`). Both outcomes must be recorded in `return_put_away_logs` for inventory audit.
-
----
-
-## UC14 — Return & Refund
-
-**Actors:** Customer or Store Staff, Sprint Connect, TMS
-**Trigger:** Customer requests a return after Delivered or Collected.
-**Allowed states:** `Delivered`, `Collected`, `Paid`
-
-| Step | Who | What happens |
-|---|---|---|
-| 1 | Customer / Staff | Requests return with reason |
-| 2 | Sprint Connect | Guard check: Order must be `Delivered`, `Collected`, or `Paid` |
-| 3 | Sprint Connect | Raises `ReturnRequested` event |
-| 4 | Sprint Connect → TMS | Schedule return pickup |
-| 5 | TMS → Sprint Connect | Return pickup confirmed — Driver collects items from customer |
-| 6 | Sprint Connect | Items received — triggers refund evaluation |
-| 7 | Sprint Connect | `RefundProcessed` raised — refund issued to customer |
-| 8 | Sprint Connect | Order status → `Returned` |
-
-**Key insight:** Refund is distinct from Credit Note. Credit Note covers partial-pick shortages (issued at fulfillment time). Refund is issued post-delivery as part of the return process.
-
----
-
 ## UC15 — Order On Hold / Release
 
-**Actors:** Store Staff or System (automated compliance), Sprint Connect
+**Actors:** Store Staff or System (automated compliance), Sprint Connect, WMS, TMS
 **Trigger:** Compliance check, payment issue, manual intervention.
 **Allowed states:** Any state before `Delivered`
 
 | Step | Who | What happens |
 |---|---|---|
-| 1 | Staff / System | Calls `HoldOrder(reason)` |
-| 2 | Sprint Connect | Order status → `OnHold`; raises `OrderOnHold` with `HoldReason` |
-| 3 | Sprint Connect | All lifecycle transitions blocked while `OnHold` |
-| 4 | Staff | Resolves the issue and calls `ReleaseOrder()` |
-| 5 | Sprint Connect | Order resumes from its pre-hold state; raises `OrderReleased` |
+| 1 | Staff / System | Calls `HoldOrder(reason)` — `PATCH /api/v1/orders/{orderId}/hold` |
+| 2 | Sprint Connect | Stores `pre_hold_status`; Order status → `OnHold`; raises `OrderOnHoldEvent` |
+| 3 | Sprint Connect → WMS | WMS notified to pause any in-progress picking task |
+| 4 | Sprint Connect → TMS | TMS notified to pause any scheduled delivery |
+| 5 | Sprint Connect | All lifecycle transitions blocked while `OnHold` |
+| 6 | Staff | Resolves the issue and calls `ReleaseOrder()` — `PATCH /api/v1/orders/{orderId}/release` |
+| 7 | Sprint Connect | Order resumes `pre_hold_status`; raises `OrderReleasedEvent` |
+| 8 | Sprint Connect → WMS | WMS notified to resume picking |
+| 9 | Sprint Connect → TMS | TMS notified to resume delivery scheduling |
 
-**Key insight:** OnHold is a non-destructive pause — the Order returns to exactly the state it was in before the hold. The previous state must be stored alongside the hold.
+**Key insight:** OnHold is a non-destructive pause — WMS and TMS are told to wait, and the Order returns to exactly the state it was in before the hold when released.
 
 ---
 
@@ -363,24 +335,360 @@ Same as UC1 through Step 9, then diverges:
 
 | Step | Who | What happens |
 |---|---|---|
-| 1 | TMS → Sprint Connect | Reports `PackageLost(trackingId)` |
-| 2 | Sprint Connect | Raises `PackageLost` domain event |
-| 3 | Sprint Connect | Order status → `OnHold` with reason `PackageLost` |
+| 1 | TMS → Sprint Connect | `POST /webhooks/tms/package-lost` — reports `PackageLost(trackingId)` |
+| 2 | Sprint Connect | Webhook received logged; `Order.MarkPackageLost(trackingId)` — raises `PackageLostEvent` |
+| 3 | Sprint Connect | Order status → `OnHold` with reason `PackageLost`; `OrderOnHoldEvent` → outbox → WMS + TMS |
 | 4 | Staff | Initiates manual intervention: re-dispatch or refund decision |
-| 5a | Staff | If re-dispatch: `ReassignPackages` with new package → `ReleaseOrder` |
-| 5b | Staff | If cannot recover: `Cancel` or `RequestReturn` to process refund |
+| 5a | Staff | If re-dispatch: `PATCH /api/v1/orders/{id}/reassign-packages` → `ReleaseOrder` |
+| 5b | Staff | If cannot recover: `PATCH /api/v1/orders/{id}/cancel` or `POST /api/v1/returns` to process refund |
 
 **Key insight:** PackageLost triggers OnHold automatically — the Order cannot progress until staff resolves it. This prevents the invoice/payment flow from running on an undelivered order.
 
 ---
 
+## UC18 — View Order Timeline
+
+**Actors:** Operations Staff, Support Team, Sprint Connect
+**Trigger:** Any time someone needs to trace the full lifecycle of an order.
+
+| Step | Who | What happens |
+|---|---|---|
+| 1 | Ops / Support | `GET /api/v1/orders/{orderId}/timeline` |
+| 2 | Sprint Connect | Loads three data sources: `order_status_history`, `order_webhook_logs`, `order_outbox` |
+| 3 | Sprint Connect | Merges and sorts all entries by timestamp |
+| 4 | Sprint Connect | Returns `OrderTimelineDto` with typed entries |
+
+**Three entry types in the timeline:**
+
+| Type | Source | What it shows |
+|---|---|---|
+| `Domain` | `order_status_history` | Every state machine transition: `Pending → BookingConfirmed`, `PickStarted → PickConfirmed`, etc. |
+| `WebhookReceived` | `order_webhook_logs` | Every webhook received from an external system: `PickConfirmed ← WMS`, `PackageDelivered ← TMS`, `RecalculationResult ← POS` |
+| `Outbound` | `order_outbox` | Every event dispatched to an external system: `PickStartedEvent → WMS`, `OrderPackedEvent → TMS`, status = `Pending / Published / Failed` |
+
+**Key insight:** A single API call gives a complete audit trail of who did what, when, and which external systems were notified or received callbacks. Outbound entries show retry counts and failure status for debugging integration issues.
+
+---
+
+## UC19 — Item Substitution During Pick
+
+**Actors:** WMS, Customer, Store Staff, Sprint Connect, POS
+**Trigger:** During picking, WMS finds one or more SKUs out of stock and proposes a substitute item.
+**Precondition:** Order is in `PickStarted` state.
+
+Two paths determined by `substitution_flag` set at order placement:
+
+### Path A — Auto-Approve (`substitution_flag = true`)
+
+Customer pre-consented to substitutions at checkout. No approval step needed.
+
+| Step | Who | What happens |
+|---|---|---|
+| 1 | WMS → Sprint Connect | `POST /webhooks/wms/pick-confirmed` with `pickedLines` (original lines, `pickedAmount=0` for substituted item) and `substitutions` list |
+| 2 | Sprint Connect | Webhook received — `source=WMS, event=PickConfirmed, substitutions=1` |
+| 3 | Sprint Connect | `Order.ConfirmPick(pickedLines)` — original lines updated; status → `PickConfirmed` |
+| 4 | Sprint Connect | `Order.RecordSubstitution(originalLineId, substituteSku, ...)` called for each substitution |
+| 5 | Sprint Connect | New `OrderLine` added with `is_substitute=true`; `OrderLineSubstitution` record created with `customer_approved=true` (auto) |
+| 6 | Sprint Connect | `pos_recalc_pending=true`; `SubstitutionProposedEvent` (auto-approved) → outbox (internal) |
+| 7 | Sprint Connect → POS | `PickConfirmedEvent` → outbox → POS (includes substitute item pricing) |
+| 8 | POS → Sprint Connect | `POST /webhooks/pos/recalculation-result` — recalculated total with substitute price |
+| 9 | Sprint Connect | Webhook received — `source=POS, event=RecalculationResult`; `pos_recalc_pending=false` |
+| 10 | Sprint Connect → Gateway | Updated total sent to customer (reflects substitute item price) |
+
+### Path B — Customer Approval Required (`substitution_flag = false`)
+
+| Step | Who | What happens |
+|---|---|---|
+| 1–6 | (same as Path A steps 1–6) | Pick confirmed, substitution recorded, `customer_approved=null` (pending) |
+| 7 | Sprint Connect → Gateway | Substitution proposal notified to customer (substitute SKU, name, price, image) |
+| 8a | Customer (approve) | `PATCH /api/v1/orders/{id}/substitutions/{subId}/approve` |
+| 8a | Sprint Connect | `Order.ApproveSubstitution(substitutionId)` — `customer_approved=true`; `SubstitutionApprovedEvent` → outbox (internal) |
+| 8b | Customer (reject) | `PATCH /api/v1/orders/{id}/substitutions/{subId}/reject` |
+| 8b | Sprint Connect | `Order.RejectSubstitution(substitutionId)` — `customer_approved=false`; substitute `OrderLine` cancelled; `pos_recalc_pending=true` |
+| 9 | Sprint Connect → POS | `PickConfirmedEvent` → outbox → POS (once all substitutions resolved — approve or reject) |
+| 10 | POS → Sprint Connect | `POST /webhooks/pos/recalculation-result` |
+| 11 | Sprint Connect → Gateway | Updated total sent to customer |
+
+**If customer rejects:** substitute line is removed from basket. POS recalculates without it. `MarkPacked` is blocked until `pos_recalc_pending` is cleared by POS response.
+
+**Key insight:** `substitution_flag` on the order determines whether the OMS auto-approves or waits for customer response. The `MarkPacked` guard (`pos_recalc_pending=true`) ensures the order cannot proceed to packaging until all substitution pricing is resolved regardless of path. Both paths produce the same atomic DB commit: order state + substitute order line + `OrderLineSubstitution` record + outbox + webhook log.
+
+---
+
+## UC20 — Package Damaged During Delivery
+
+**Actors:** TMS, Store Staff, Customer, Sprint Connect
+**Trigger:** TMS driver reports a package is damaged before or during handoff to the customer.
+**Precondition:** Order is in `OutForDelivery` or `Delivering` state.
+
+| Step | Who | What happens |
+|---|---|---|
+| 1 | TMS → Sprint Connect | `POST /webhooks/tms/package-damaged` — inbound webhook with `trackingId` |
+| 2 | Sprint Connect | Webhook received — `source=TMS, event=PackageDamaged, tracking=TRK001` |
+| 3 | Sprint Connect | `Order.MarkPackageDamaged(trackingId)` — raises `PackageDamagedEvent`; Order status → `OnHold` (`reason=PackageDamaged`); `pre_hold_status` stored |
+| 4 | Sprint Connect → WMS / TMS | `OrderOnHoldEvent` → outbox → WMS + TMS (pause any related tasks) |
+| 5 | Staff | Alerted; investigates damage severity and customer preference |
+
+Three resolution paths:
+
+### Path A — Re-dispatch (replacement item sent)
+
+| Step | Who | What happens |
+|---|---|---|
+| 6a | Staff → Sprint Connect | `ReassignPackages` — new package with replacement stock and new `TrackingId` |
+| 7a | Staff → Sprint Connect | `ReleaseOrder` — order resumes `OutForDelivery`; `OrderReleasedEvent` → WMS + TMS |
+| 8a | TMS → Sprint Connect | New `PackageOutForDelivery` webhook for replacement package |
+| 9a | TMS → Sprint Connect | `PackageDelivered` — order → `Delivered`; normal invoice + payment flow |
+
+### Path B — Customer accepts damaged item with compensation
+
+| Step | Who | What happens |
+|---|---|---|
+| 6b | Staff → Sprint Connect | `ReleaseOrder` — order resumes `OutForDelivery` |
+| 7b | TMS → Sprint Connect | `PackageDelivered` — customer accepted the damaged item; order → `Delivered` |
+| 8b | Sprint Connect | `GenerateInvoice` — invoice generated as normal |
+| 9b | Sprint Connect | Credit note issued for partial compensation (damage discount) |
+| 10b | Sprint Connect | `NotifyPayment` — order closed |
+
+### Path C — Customer refuses / unrecoverable damage
+
+| Step | Who | What happens |
+|---|---|---|
+| 6c | Staff → Sprint Connect | `CancelOrder(reason=PackageDamaged)` |
+| 7c | Sprint Connect | `OrderCancelledEvent` → outbox → WMS + TMS + POS |
+| 8c | Sprint Connect | If pre-paid: credit note / refund initiated |
+
+**Key insight:** Damage during delivery is a fulfillment exception — NOT a substitution. The item was picked and dispatched correctly; the damage occurred in transit. All three resolution paths reuse existing commands (`ReassignPackages`, `ReleaseOrder`, `CancelOrder`) — no new staff-side commands are needed. The `OrderOnHoldEvent` automatically pauses WMS and TMS via the existing outbox routing for `OnHold`.
+
+**Distinction from UC16 (Package Lost):**
+
+| | UC16 Package Lost | UC20 Package Damaged |
+|---|---|---|
+| Item exists? | No — cannot be recovered | Yes — in driver's possession |
+| Resolution paths | Re-dispatch or cancel | Re-dispatch, accept + compensate, or cancel |
+| Customer receives anything? | No | Possibly yes (Path B) |
+
+---
+
+## Inbound Order Flow
+
+---
+
+## UC14 — Return & Refund (Inbound)
+
+**Actors:** Customer, TMS, WMS, Warehouse Staff, Sprint Connect, POS
+**Trigger:** Customer requests a return after delivery.
+**Precondition:** Order is in `Delivered`, `Collected`, or `Paid` state.
+
+| Step | Who | What happens |
+|---|---|---|
+| 1 | Customer / Staff | `POST /api/v1/returns` — Sprint Connect creates an `OrderReturn` record linked to the order; status → `ReturnRequested`; `ReturnRequestedEvent` → outbox → TMS |
+| 2 | Sprint Connect → TMS | TMS notified to schedule a return pickup from the customer |
+| 3 | TMS → Sprint Connect | `POST /webhooks/tms/return-pickup-scheduled` — confirms pickup window; status → `PickupScheduled` |
+| 4 | TMS → Sprint Connect | `POST /webhooks/tms/return-pickup-confirmed` — driver has collected the goods from the customer; status → `PickedUp` |
+| 5 | WMS → Sprint Connect | `POST /webhooks/wms/return-received-at-warehouse` — goods arrive at warehouse receiving dock; GRN recorded; status → `ReceivedAtWarehouse` |
+| 6 | Warehouse Staff | Inspects returned items; assigns condition per item |
+| 7 | WMS → Sprint Connect | `POST /webhooks/wms/put-away-confirmed` — items placed on shelf with `ItemCondition` per item; triggers atomic refund step (see UC17) |
+| 8 | Sprint Connect | `ret.ProcessRefund(creditNoteId)` — credit note generated (`CN-{returnId}`); `RefundProcessedEvent` → outbox → POS; status → `Refunded` |
+| 9 | Sprint Connect | `order.MarkReturned(returnId)` — parent Order status → `Returned`; `OrderReturnedEvent` raised; both aggregates saved in one transaction |
+
+**Return status flow:** `ReturnRequested → PickupScheduled → PickedUp → ReceivedAtWarehouse → PutAway → Refunded`
+
+**Order status:** `Delivered / Collected / Paid → (unchanged during return journey) → Returned`
+
+**API endpoints involved:**
+
+| Direction | Endpoint | Purpose |
+|---|---|---|
+| Inbound (Staff/Customer) | `POST /api/v1/returns` | Create return request |
+| Inbound (TMS webhook) | `POST /webhooks/tms/return-pickup-scheduled` | TMS confirms pickup window |
+| Inbound (TMS webhook) | `POST /webhooks/tms/return-pickup-confirmed` | TMS driver collects from customer |
+| Inbound (WMS webhook) | `POST /webhooks/wms/return-received-at-warehouse` | WMS confirms goods at dock with GRN |
+| Inbound (WMS webhook) | `POST /webhooks/wms/put-away-confirmed` | WMS confirms items on shelf — triggers refund |
+
+**Key insight:** The return lifecycle spans two aggregates: `OrderReturn` tracks the physical goods journey; `Order` tracks the overall order status. Both are updated atomically inside `ConfirmPutAwayHandler`: put-away confirmation + refund credit note generation + `Order.MarkReturned()` committed in a single `SaveChangesAsync()` call. If POS is unavailable, the outbox guarantees `RefundProcessedEvent` will be retried until delivered.
+
+---
+
+## UC17 — Put Away (Returned Items)
+
+**Actors:** Warehouse Staff, WMS, Sprint Connect, POS
+**Trigger:** WMS confirms returned items have been inspected and placed in their storage location.
+**Precondition:** `OrderReturn` is in `ReceivedAtWarehouse` state (UC14 Step 5 has completed).
+
+| Step | Who | What happens |
+|---|---|---|
+| 1 | Warehouse Staff | Inspects each returned item and assigns `ItemCondition`: `Resellable`, `Repairable`, or `Dispose` |
+| 2 | WMS | Assigns a storage or disposal Sloc per item based on its condition |
+| 3 | WMS → Sprint Connect | `POST /webhooks/wms/put-away-confirmed` — sends each item with `sku`, `condition`, and `sloc` |
+| 4 | Sprint Connect | Webhook received logged; `ret.ConfirmPutAway(items, updatedBy)` — `OrderReturn` status → `PutAway` |
+| 5 | Sprint Connect | `ret.ProcessRefund(creditNoteId, updatedBy)` — credit note `CN-{returnId}` generated; `OrderReturn` status → `Refunded`; `RefundProcessedEvent` → outbox |
+| 6 | Sprint Connect | `order.MarkReturned(returnId, updatedBy)` — parent `Order` status → `Returned`; `OrderReturnedEvent` raised |
+| 7 | Sprint Connect | Both aggregates (`OrderReturn` + `Order`) saved in one `SaveChangesAsync()` call |
+| 8 | Sprint Connect → POS | `RefundProcessedEvent` dispatched — POS issues the credit note / refund to the customer |
+
+**ItemCondition outcomes:**
+
+| Condition | Outcome |
+|---|---|
+| `Resellable` | Stock returned to available WMS inventory — no write-off |
+| `Repairable` | Flagged for repair workflow — held out of available inventory |
+| `Dispose` | Written off — insurance / cost-of-goods journal entry triggered |
+
+**Key insight:** `ConfirmPutAwayHandler` performs an atomic three-step transaction: (1) confirm put-away and record item conditions, (2) generate the refund credit note, (3) mark the parent Order as `Returned`. All three steps commit together in one `SaveChangesAsync()`. A failure in any step rolls back the entire transaction — preventing a state where the Order is marked `Returned` but no credit note was generated, or vice versa.
+
+---
+
+## UC21 — Supplier / Purchase Order Receipt (Inbound)
+
+**Actors:** Supplier, WMS, Warehouse Staff, Sprint Connect
+**Trigger:** Supplier arrives at warehouse dock with goods against an open Purchase Order.
+
+| Step | Who | What happens |
+|---|---|---|
+| 1 | Staff / ERP | `POST /api/v1/inbound/purchase-orders` — OMS creates a `PurchaseOrder` record; status → `Created`; `PurchaseOrderCreatedEvent` → outbox → WMS |
+| 2 | Sprint Connect → WMS | WMS receives PO details so it knows expected goods and quantities |
+| 3 | Supplier | Arrives at receiving dock; WMS creates a GoodsReceipt against the PO |
+| 4 | WMS → Sprint Connect | `POST /webhooks/wms/goods-receipt-confirmed` — actual quantities received per line, with `ItemCondition` per line |
+| 5 | Sprint Connect | Webhook received logged; `PurchaseOrder.ConfirmGoodsReceipt(lines)` — each line's `ReceivedQty` updated; status → `PartiallyReceived` or `FullyReceived` |
+| 6 | Warehouse Staff | Inspects goods; WMS assigns storage locations (Sloc) per item condition |
+| 7 | WMS → Sprint Connect | `POST /webhooks/wms/purchase-order-put-away-confirmed` — confirms stock is on shelf |
+| 8 | Sprint Connect | `PurchaseOrder.ConfirmPutAway()` — stock ledger updated; if partial receipt: discrepancy raised for buyer follow-up |
+
+**Status flow:** `Created → PartiallyReceived / FullyReceived → Closed`
+
+**Key insight:** The OMS acts as the source of truth for expected vs received quantities. WMS owns the physical receiving and put-away; Sprint Connect records the outcome. Partial receipts stay open until the PO is explicitly closed by the buyer.
+
+---
+
+## UC22 — Inter-store Stock Transfer (Inbound)
+
+**Actors:** Source Store Staff, Sprint Connect, TMS, Destination Store Staff, WMS
+**Trigger:** A store or DC needs to replenish stock from another store or central DC.
+
+| Step | Who | What happens |
+|---|---|---|
+| 1 | Staff | `POST /api/v1/inbound/transfer-orders` — destination store raises a `TransferOrder` (source store, dest store, SKUs + quantities); status → `Created`; `TransferOrderCreatedEvent` → outbox → WMS (source) |
+| 2 | Sprint Connect → WMS (source) | Transfer order dispatched for picking at source store |
+| 3 | WMS (source) → Sprint Connect | `POST /webhooks/wms/transfer-pick-confirmed` — items picked and packed at source; status → `PickConfirmed`; `TransferPickConfirmedEvent` → outbox → TMS |
+| 4 | Sprint Connect → TMS | Transfer shipment registered with `TrackingId` |
+| 5 | TMS → Sprint Connect | `POST /webhooks/tms/package-dispatched` (reuses existing endpoint) — goods in transit; status → `InTransit` |
+| 6 | TMS → Sprint Connect | `POST /webhooks/tms/package-delivered` (reuses existing endpoint) — goods arrive at destination store |
+| 7 | WMS (destination) → Sprint Connect | `POST /webhooks/wms/transfer-received` — destination staff confirms receipt and put-away; status → `Received → Completed` |
+| 8 | Sprint Connect | `TransferOrder.Complete()` — stock balances updated at both stores; `TransferOrderCompletedEvent` raised |
+
+**Status flow:** `Created → PickConfirmed → InTransit → Received → Completed`
+
+**Key insight:** The TransferOrder aggregate is separate from Order and Return. It owns stock movement between two stores. TMS webhooks reuse the existing package-dispatched / package-delivered endpoints with `transferOrderId` context.
+
+---
+
+## UC23 — Damaged Goods Return Receipt (Inbound)
+
+**Actors:** TMS, WMS, Warehouse Staff, Sprint Connect
+**Trigger:** A damaged package from UC20 Path A (replacement sent, damaged item retrieved from driver) is returned to the warehouse dock.
+**Precondition:** UC20 Path A was executed — replacement was sent and the driver returned the damaged package.
+
+| Step | Who | What happens |
+|---|---|---|
+| 1 | TMS driver | Returns damaged package to warehouse receiving dock |
+| 2 | WMS → Sprint Connect | `POST /webhooks/wms/damaged-goods-received` — damaged package checked in at dock (`trackingId`) |
+| 3 | Sprint Connect | Webhook received logged; `Order.ConfirmDamagedGoodsReceived(trackingId)` — links to original order (still `OnHold`); `DamagedGoodsReceivedEvent` raised |
+| 4 | Warehouse Staff | Inspects each item — assigns `ItemCondition`: `Resellable`, `Repairable`, or `Dispose` |
+| 5 | WMS | Assigns storage or disposal location (Sloc) per condition |
+| 6 | WMS → Sprint Connect | `POST /webhooks/wms/damaged-goods-put-away-confirmed` — condition + Sloc per item |
+| 7 | Sprint Connect | `Order.ConfirmDamagedGoodsPutAway(trackingId)` — records result; `DamagedGoodsPutAwayConfirmedEvent` raised |
+| 8 | Sprint Connect | Resolution by condition: `Resellable` → stock restored; `Repairable` → flagged for repair workflow; `Dispose` → written off, insurance/cost-of-goods adjustment triggered |
+| 9 | Sprint Connect | Damaged goods record closed; linked to original order for audit trail |
+
+**ItemCondition outcomes:**
+
+| Condition | Outcome |
+|---|---|
+| `Resellable` | Stock returned to available inventory — no write-off |
+| `Repairable` | Flagged for repair workflow — held out of available inventory |
+| `Dispose` | Written off — insurance / cost-of-goods journal entry triggered |
+
+**Key insight:** This use case always follows UC20 Path A. The Order remains `OnHold` throughout the damaged goods processing; it is closed only after put-away is confirmed. `ItemCondition` is recorded per item at put-away time, not at receipt — allowing staff time to inspect before committing the outcome.
+
+---
+
+## UC24 — End-to-End: Inbound Receipt to Outbound Delivery
+
+**Actors:** Supplier, WMS, Warehouse Staff, Customer, Sprint Connect, POS, TMS
+**Trigger:** A supplier delivers goods against a Purchase Order; those same goods are later picked to fulfill a customer order.
+**Purpose:** This use case shows the complete product journey through the warehouse — from goods arriving at the dock to goods arriving at the customer's door. It is not a new workflow; it is the sequence of UC21 → UC1 with the WMS stock bridge made explicit.
+
+---
+
+### Phase 1 — Inbound: Goods Arrive at Warehouse (UC21)
+
+| Step | Who | What happens |
+|---|---|---|
+| 1 | Staff / ERP | `POST /api/v1/inbound/purchase-orders` — OMS creates `PurchaseOrder` for expected SKUs and quantities; status → `Created` |
+| 2 | Sprint Connect → WMS | `PurchaseOrderCreatedEvent` dispatched — WMS registers expected delivery at the receiving dock |
+| 3 | Supplier | Arrives at dock with physical goods |
+| 4 | WMS → Sprint Connect | `POST /webhooks/wms/goods-receipt-confirmed` — WMS scans and counts received items; OMS records `ReceivedQty` per line; PO status → `FullyReceived` or `PartiallyReceived` |
+| 5 | WMS | Assigns storage location (Sloc) per item |
+| 6 | WMS → Sprint Connect | `POST /webhooks/wms/purchase-order-put-away-confirmed` — goods physically placed on shelf; OMS records put-away confirmation |
+| 7 | WMS | **Stock is now available** — WMS inventory for the received SKUs is incremented and available for picking |
+
+> **Bridge:** After Step 7, the WMS holds available stock. Any customer order that includes those SKUs can now be fulfilled by picking from the shelf where the inbound goods were placed.
+
+---
+
+### Phase 2 — Outbound: Customer Order Fulfilled (UC1)
+
+| Step | Who | What happens |
+|---|---|---|
+| 8 | Customer | Places a delivery order that includes one or more SKUs from the received PO |
+| 9 | Sprint Connect | Order created → `OrderCreatedEvent` → outbox → WMS; status → `Pending` |
+| 10 | Sprint Connect → WMS | `BookingConfirmedEvent` / `PickStartedEvent` — WMS schedules a pick task |
+| 11 | WMS | Picker walks to the Sloc assigned during put-away (Step 5) and picks the goods |
+| 12 | WMS → Sprint Connect | `POST /webhooks/wms/pick-confirmed` — actual picked quantities reported; OMS updates order lines; `PickConfirmedEvent` → POS |
+| 13 | POS → Sprint Connect | `POST /webhooks/pos/recalculation-result` — final prices confirmed |
+| 14 | WMS | Items packed into packages with TrackingIds |
+| 15 | Sprint Connect → TMS | `OrderPackedEvent` — TMS schedules driver for delivery |
+| 16 | TMS → Sprint Connect | `POST /webhooks/tms/package-dispatched` — driver en route; order → `OutForDelivery` |
+| 17 | TMS → Sprint Connect | `POST /webhooks/tms/package-delivered` — customer receives goods; order → `Delivered` |
+| 18 | Sprint Connect | Invoice generated → `NotifyPayment` — order closed |
+
+---
+
+### End-to-End Status Flow
+
+```
+PurchaseOrder:  Created → FullyReceived → Closed
+                                      ↓
+                              WMS stock available
+                                      ↓
+Order:          Pending → BookingConfirmed → PickStarted → PickConfirmed
+                       → Packed → OutForDelivery → Delivered → Invoiced → Paid
+```
+
+### What OMS Owns at Each Phase
+
+| Phase | OMS record | OMS role |
+|---|---|---|
+| Inbound | `PurchaseOrder` + `PurchaseOrderLine` | Records expected vs received quantities; triggers WMS put-away |
+| Stock bridge | (WMS-internal) | WMS holds actual stock levels — OMS does not track inventory counts |
+| Outbound | `Order` + `OrderLine` + `OrderPackage` | Orchestrates pick → pack → dispatch → delivery; drives POS and TMS |
+
+**Key insight:** OMS is the orchestration layer on both sides, but it never owns inventory counts — that is WMS's responsibility. The link between inbound and outbound is entirely in the WMS: after `PurchaseOrderPutAwayConfirmed`, the WMS increments available stock for those SKUs; when `PickStarted` arrives, the WMS picks from that available stock. Sprint Connect coordinates both events but does not track the stock number itself.
+
+**Partial receipt edge case:** If the PO was `PartiallyReceived` (Step 4) and a customer orders the same SKU, WMS may report a short pick in Step 12. This feeds directly into the partial-pick credit note flow (UC5).
+
+---
+
 ## Summary
+
+**Outbound Order Flow** — goods leaving the warehouse to a customer
 
 | Use Case | Trigger | FulfillmentType | Key Systems |
 |---|---|---|---|
 | UC1 Pre-paid order | Customer checkout | Delivery | Sprint Connect, WMS, POS, TMS |
 | UC2 Pay-on-Delivery | Customer checkout | Delivery | Sprint Connect, WMS, POS, TMS |
-| UC3 Cancellation | Customer / staff | Any | Sprint Connect, TMS |
+| UC3 Cancellation | Customer / staff | Any | Sprint Connect, WMS, TMS, POS |
 | UC4 Reschedule | Customer / staff | Delivery | Sprint Connect, TMS |
 | UC5 Partial pick + credit note | Picker / WMS | Any | Sprint Connect, WMS, POS, TMS, STS |
 | UC6 Non-rolled-out store | Customer checkout | Delivery (legacy) | Sprint Connect, TMS, Backend |
@@ -389,9 +697,21 @@ Same as UC1 through Step 9, then diverges:
 | UC9 Express delivery | Customer checkout | Express | Sprint Connect, WMS, POS, TMS |
 | UC10 Weight-based order | Customer checkout | Delivery / Express | Sprint Connect, WMS, POS, TMS |
 | UC11 Multi-vehicle split delivery | WMS AssignPackages | Delivery | Sprint Connect, WMS, POS, TMS (multiple) |
-| UC12 Modify order lines | Customer / Staff request | Any | Sprint Connect, POS |
+| UC12 Modify order lines | Customer / Staff request | Any | Sprint Connect, WMS, POS |
 | UC13 Reassign packages | WMS ReassignPackages | Delivery | Sprint Connect, WMS, TMS |
-| UC14 Return & Refund | Customer / Staff request | Any | Sprint Connect, TMS |
-| UC17 Put Away (returned items) | WMS PutAwayConfirmed | Returns | Sprint Connect, WMS, Warehouse Staff |
-| UC15 Order On Hold / Release | Staff / System | Any | Sprint Connect |
+| UC15 Order On Hold / Release | Staff / System | Any | Sprint Connect, WMS, TMS |
 | UC16 Package Lost | TMS exception report | Delivery | Sprint Connect, TMS, Staff |
+| UC18 View Order Timeline | Ops / Support query | Any | Sprint Connect |
+| UC19 Item Substitution | WMS pick-confirmed with substitutions | Any | Sprint Connect, WMS, POS, Customer |
+| UC20 Package Damaged | TMS damage report during transit | Delivery | Sprint Connect, TMS, WMS, Staff |
+
+**Inbound Order Flow** — goods arriving at the warehouse
+
+| Use Case | Trigger | FulfillmentType | Key Systems |
+|---|---|---|---|
+| UC14 Return & Refund | Customer / Staff request | Any | Sprint Connect, TMS, WMS, POS |
+| UC17 Put Away (returned items) | WMS PutAwayConfirmed | Returns | Sprint Connect, WMS, POS, Warehouse Staff |
+| UC21 Supplier PO Receipt | Supplier arrives at warehouse dock | Inbound | Sprint Connect, WMS, Supplier |
+| UC22 Inter-store Transfer | Stock replenishment between stores | Inbound | Sprint Connect, WMS (source + dest), TMS |
+| UC23 Damaged Goods Return | Driver returns damaged package to warehouse | Inbound | Sprint Connect, WMS, TMS, Staff |
+| UC24 Inbound → Outbound (end-to-end) | Supplier delivers goods; same SKUs ordered by customer | Inbound + Outbound | Sprint Connect, WMS, Supplier, Customer, POS, TMS |

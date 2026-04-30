@@ -32,29 +32,31 @@ sequenceDiagram
     SC-->>PS: Booking confirmed
     PS-->>GW: Booking confirmed
     GW-->>C: Booking confirmed
+    SC->>WMS: BookingConfirmed (outbox → WMS)
+    Note over SC,WMS: WMS schedules picking slot
 
     C->>GW: Sale Order
     GW->>PS: Sale Order
     PS->>SC: Sale Order
-    Note over SC: Order created and persisted
+    Note over SC: Order created and persisted\nOrderCreatedEvent → outbox → WMS
 
-    SC->>WMS: Pick Started
+    SC->>WMS: Pick Started (outbox → WMS)
     WMS-->>SC: Pick Started ACK
 
-    WMS->>SC: Pick Confirmed (basket qty)
-    WMS->>SC: POS Recalculation
-    SC->>POS: POS Recalculation (actual qty)
-    POS-->>SC: Recalculated prices
+    WMS->>SC: POST /webhooks/wms/pick-confirmed (inbound)
+    Note over SC: Webhook received — source=WMS, event=PickConfirmed\nPartial pick? → pos_recalc_pending=true\nPickConfirmedEvent → outbox → POS
+    SC->>POS: PickConfirmedEvent (outbox — actual qty for recalc)
+    POS->>SC: POST /webhooks/pos/recalculation-result (inbound)
+    Note over SC: Webhook received — source=POS, event=RecalculationResult\npos_recalc_pending cleared
     SC-->>GW: POS Recalculation (updated total to customer)
 
-    WMS->>SC: ABB/Tax Invoice (Pre-paid)
-    Note over SC: Invoice generated before dispatch
+    Note over SC: Order.MarkPacked() — OrderPackedEvent → outbox → TMS
 
-    TMS->>SC: Out for Delivery
-    Note over SC: Order status → OutForDelivery
+    TMS->>SC: POST /webhooks/tms/package-dispatched (inbound)
+    Note over SC: Webhook received — source=TMS, event=PackageDispatched\nOrder status → OutForDelivery
 
-    TMS->>SC: Delivered
-    Note over SC: Order status → Delivered
+    TMS->>SC: POST /webhooks/tms/package-delivered (inbound)
+    Note over SC: Webhook received — source=TMS, event=PackageDelivered\nOrder status → Delivered\nDeliveredEvent → outbox → POS (trigger invoice)
     SC-->>C: Notify Paid
 ```
 
@@ -75,28 +77,24 @@ sequenceDiagram
     C->>GW: Branch / Timeslot / Booking / Sale Order
     GW->>PS: forward
     PS->>SC: forward
-    Note over SC: Order created and persisted
+    Note over SC: Order created and persisted\nOrderCreatedEvent → outbox → WMS
 
-    SC->>WMS: Pick Started
-    WMS->>SC: Pick Confirmed (basket qty)
-    WMS->>SC: POS Recalculation
-    SC->>POS: POS Recalculation (actual qty)
-    POS-->>SC: Recalculated prices
+    SC->>WMS: Pick Started (outbox → WMS)
+    WMS->>SC: POST /webhooks/wms/pick-confirmed (inbound)
+    Note over SC: Webhook received — source=WMS, event=PickConfirmed\nPickConfirmedEvent → outbox → POS
+    SC->>POS: PickConfirmedEvent (actual qty for recalc)
+    POS->>SC: POST /webhooks/pos/recalculation-result (inbound)
+    Note over SC: pos_recalc_pending cleared
     SC-->>GW: POS Recalculation (updated total to customer)
 
-    TMS->>SC: Out for Delivery
-    Note over SC: Order status → OutForDelivery
+    TMS->>SC: POST /webhooks/tms/package-dispatched (inbound)
+    Note over SC: Webhook received — source=TMS, event=PackageDispatched\nOrder status → OutForDelivery
 
-    TMS->>SC: Delivered
-    TMS->>SC: POS Recalculation
-    Note over SC: Order status → Delivered
-    SC->>POS: POS Recalculation (for POD invoice)
-    POS-->>SC: Recalculated prices
-    SC-->>GW: POS Recalculation (final total to customer)
+    TMS->>SC: POST /webhooks/tms/package-delivered (inbound)
+    Note over SC: Webhook received — source=TMS, event=PackageDelivered\nOrder status → Delivered\nDeliveredEvent → outbox → POS (invoice trigger)
 
     Note over SC,TMS: Invoice issued AFTER delivery for POD
-    SC->>PS: ABB/Tax Invoice (POD)
-    PS->>TMS: ABB/Tax Invoice (POD)
+    SC->>POS: DeliveredEvent (outbox → POS for invoice)
 
     SC->>SC: Inquiry payment / Get Payment link
     SC-->>C: Payment link sent
@@ -117,9 +115,11 @@ sequenceDiagram
 
     C->>SC: Cancel Order (any lifecycle stage)
     SC->>SC: Order.Cancel(reason) — status → Cancelled
+    Note over SC: OrderCancelledEvent → outbox → WMS + TMS + POS
 
-    SC->>TMS: Cancelled Order
-    TMS-->>SC: Delivery slot released
+    SC->>WMS: Cancelled (outbox — stop any in-progress pick)
+    SC->>TMS: Cancelled (outbox — release delivery slot)
+    SC->>POS: Cancelled (outbox — void any pending recalc)
 
     alt Pre-paid order
         SC->>TMS: Credit Note
@@ -162,12 +162,14 @@ sequenceDiagram
     participant TMS as TMS
     participant STS as STS
 
-    SC->>WMS: Pick Started
+    SC->>WMS: Pick Started (outbox → WMS)
     Note over WMS: Picker finds item out of stock
-    WMS->>SC: Pick Confirmed (reduced basket qty)
+    WMS->>SC: POST /webhooks/wms/pick-confirmed (inbound — reduced qty)
+    Note over SC: Webhook received — source=WMS\nhasPartialPick=true → pos_recalc_pending=true\nPickConfirmedEvent → outbox → POS
 
-    SC->>POS: POS Recalculation (actual qty)
-    POS-->>SC: Reduced total
+    SC->>POS: PickConfirmedEvent (actual qty — partial pick)
+    POS->>SC: POST /webhooks/pos/recalculation-result (inbound)
+    Note over SC: Reduced total applied, pos_recalc_pending cleared
 
     WMS->>SC: ABB/Tax Invoice (reduced amount)
 
@@ -457,47 +459,15 @@ sequenceDiagram
     Note over SC: Guard: Pending or BookingConfirmed only\nReject if PickStarted or later
 
     SC->>SC: Apply OrderLineModification entries
-    Note over SC: Raises OrderLinesModified
+    Note over SC: Raises OrderLinesModified\nOrderLinesModifiedEvent → outbox → WMS + POS
 
-    SC->>POS: POS Recalculation (updated lines)
-    POS-->>SC: Recalculated prices
+    SC->>WMS: OrderLinesModified (outbox — WMS syncs updated SKU list)
+    SC->>POS: OrderLinesModified (outbox — POS recalculates on new lines)
+    POS->>SC: POST /webhooks/pos/recalculation-result (inbound)
     SC-->>GW: Updated total notified to customer
 
     alt PrePaid and total increased
         Note over SC: Re-authorize payment delta
-    end
-```
-
----
-
-## UC17 — Put Away (Returned Items)
-
-```mermaid
-sequenceDiagram
-    actor WS as Warehouse Staff
-    participant WMS as WMS
-    participant SC as Sprint Connect
-
-    Note over WMS,SC: Precondition: Return is PickedUp — items collected from customer
-
-    WMS->>SC: ReceivedAtWarehouse(returnId)
-    Note over SC: return.status → ReceivedAtWarehouse
-
-    Note over WMS,WS: Staff inspects each item
-    WS->>WMS: Assign ItemCondition per item\n(Resellable / Damaged / Dispose)
-    WMS->>WMS: Assign StorageLocation (Sloc) to Resellable items
-    Note over WS: Staff physically moves items to assigned Sloc
-
-    WMS->>WMS: Confirm put away — inventory updated
-    WMS->>SC: PutAwayConfirmed(returnId, items[sku, condition, sloc, qty])
-
-    Note over SC: For each item:\n  Resellable → put_away_status = Restocked\n  Damaged/Dispose → put_away_status = Disposed
-    SC->>SC: Write return_put_away_logs (audit per item)
-    Note over SC: return.status → PutAway
-
-    alt Refund not yet issued
-        SC->>SC: Trigger RefundProcessed
-        SC-->>WS: Refund confirmation
     end
 ```
 
@@ -510,23 +480,56 @@ sequenceDiagram
     actor C as Customer
     participant SC as Sprint Connect
     participant TMS as TMS
+    participant WMS as WMS
 
-    C->>SC: RequestReturn(reason)
-    Note over SC: Guard: Delivered, Collected, or Paid only
-    SC->>SC: Order status note — return initiated
-    Note over SC: Raises ReturnRequested
+    C->>SC: POST /api/v1/returns\n(orderId, items, reason)
+    Note over SC: Guard: Order must be Delivered, Collected, or Paid\nOrderReturn created — status: ReturnRequested\nReturnRequestedEvent → outbox → TMS
 
-    SC->>TMS: Schedule return pickup
-    TMS-->>SC: Return pickup confirmed
+    SC->>TMS: ReturnRequestedEvent (outbox)\nTMS arranges pickup
 
-    Note over TMS: Driver collects items from customer
-    TMS->>SC: Items collected
+    TMS->>SC: POST /webhooks/tms/return-pickup-scheduled\n(returnId, pickupScheduledAt)
+    Note over SC: Webhook received — source=TMS, event=ReturnPickupScheduled\nreturn.SchedulePickup(scheduledAt)\nStatus: PickupScheduled
 
-    SC->>SC: Evaluate refund amount
-    Note over SC: Raises RefundProcessed
-    SC-->>C: Refund issued
+    Note over TMS: Driver arrives at customer address
+    TMS->>SC: POST /webhooks/tms/return-pickup-confirmed\n(returnId)
+    Note over SC: Webhook received — source=TMS, event=ReturnPickupConfirmed\nreturn.ConfirmPickedUp()\nStatus: PickedUp
 
-    Note over SC: Order status → Returned
+    Note over TMS: Driver transports items to warehouse
+
+    WMS->>SC: POST /webhooks/wms/return-received-at-warehouse\n(returnId, goodsReceiveNo)
+    Note over SC: Webhook received — source=WMS, event=ReturnReceivedAtWarehouse\nreturn.ConfirmReceivedAtWarehouse(grn)\nReturnReceivedAtWarehouseEvent raised\nStatus: ReceivedAtWarehouse
+
+    Note over SC,WMS: Continues as UC17 — Put Away
+```
+
+---
+
+## UC17 — Put Away (Returned Items)
+
+```mermaid
+sequenceDiagram
+    actor WS as Warehouse Staff
+    participant WMS as WMS
+    participant SC as Sprint Connect
+    participant POS as POS
+
+    Note over WMS,SC: Precondition: Return is ReceivedAtWarehouse (UC14 Step 8)
+
+    Note over WMS,WS: Staff inspects each return item
+    WS->>WMS: Assign ItemCondition per item\n(Resellable / Damaged / Dispose)
+    WMS->>WMS: Assign StorageLocation (Sloc) per item
+    Note over WS: Staff physically moves items to assigned Sloc
+
+    WMS->>WMS: Confirm put-away — inventory updated in WMS
+    WMS->>SC: POST /webhooks/wms/put-away-confirmed\n(returnId, items[returnItemId, condition, sloc, qty])
+    Note over SC: Webhook received — source=WMS, event=PutAwayConfirmed\nreturn.ConfirmPutAway(items)\n  Resellable → put_away_status=Restocked\n  Damaged/Dispose → put_away_status=Disposed\nWrites return_put_away_logs per item\nreturn.status → PutAway\nPutAwayConfirmedEvent → outbox → POS
+
+    SC->>SC: Auto-generate creditNoteId\nreturn.ProcessRefund(creditNoteId)\nreturn.status → Refunded\nRefundProcessedEvent → outbox → POS
+
+    SC->>POS: PutAwayConfirmedEvent + RefundProcessedEvent (outbox)
+    POS-->>SC: Credit note issued to customer
+
+    SC->>SC: order.MarkReturned(returnId)\nOrder status → Returned\nOrderReturnedEvent raised (internal — audit)
 ```
 
 ---
@@ -539,12 +542,18 @@ sequenceDiagram
     participant SC as Sprint Connect
 
     SS->>SC: HoldOrder(reason)
-    Note over SC: Store pre-hold state\nOrder status → OnHold\nRaises OrderOnHold
+    Note over SC: Store pre-hold state\nOrder status → OnHold\nOrderOnHoldEvent → outbox → WMS + TMS
+
+    SC->>WMS: OrderOnHold (outbox — pause any in-progress pick)
+    SC->>TMS: OrderOnHold (outbox — pause any scheduled dispatch)
 
     Note over SC: All lifecycle transitions blocked
 
     SS->>SC: ReleaseOrder()
-    Note over SC: Order status → [pre-hold state]\nRaises OrderReleased
+    Note over SC: Order status → [pre-hold state]\nOrderReleasedEvent → outbox → WMS + TMS
+
+    SC->>WMS: OrderReleased (outbox — resume pick)
+    SC->>TMS: OrderReleased (outbox — resume dispatch)
 
     Note over SC: Lifecycle resumes from where it paused
 ```
@@ -597,4 +606,285 @@ sequenceDiagram
     TMS-->>SC: New Packages registered
 
     Note over SC,TMS: Delivery continues with new package groupings
+```
+
+---
+
+## UC20 — Package Damaged During Delivery
+
+```mermaid
+sequenceDiagram
+    actor SS as Store Staff
+    participant TMS as TMS
+    participant SC as Sprint Connect
+    participant WMS as WMS
+
+    Note over SC: Precondition: Order is OutForDelivery or Delivering
+
+    TMS->>SC: POST /webhooks/tms/package-damaged (inbound)
+    Note over SC: Webhook received — source=TMS, event=PackageDamaged\norder.MarkPackageDamaged(trackingId)\nPackageDamagedEvent → outbox (internal)\nOrderOnHoldEvent → outbox → WMS + TMS
+    SC->>WMS: OrderOnHold (outbox — pause related tasks)
+    SC->>TMS: OrderOnHold (outbox — pause dispatch)
+    SC-->>SS: Alert: package damaged — intervention required
+
+    alt Path A: Re-dispatch (replacement item sent)
+        SS->>SC: ReassignPackages(newTrackingId, replacementLines)
+        SS->>SC: ReleaseOrder()
+        Note over SC: Order resumes OutForDelivery\nOrderReleasedEvent → outbox → WMS + TMS
+        TMS->>SC: PackageOutForDelivery (new tracking)
+        TMS->>SC: PackageDelivered (replacement delivered)
+        Note over SC: Order → Delivered\nNormal invoice + payment flow
+
+    else Path B: Customer accepts damaged item with compensation
+        SS->>SC: ReleaseOrder()
+        Note over SC: Order resumes OutForDelivery
+        TMS->>SC: PackageDelivered (customer accepted)
+        Note over SC: Order → Delivered
+        SS->>SC: GenerateInvoice
+        Note over SC: Credit note issued for damage compensation
+        SC-->>SS: NotifyPayment — order closed
+
+    else Path C: Customer refuses / unrecoverable damage
+        SS->>SC: CancelOrder(reason=PackageDamaged)
+        Note over SC: OrderCancelledEvent → outbox → WMS + TMS + POS
+        SC->>WMS: Cancelled (outbox)
+        SC->>TMS: Cancelled (outbox)
+        SC->>POS: Cancelled (outbox)
+        alt Pre-paid order
+            Note over SC: Credit note / refund initiated
+            SC-->>SS: Refund processed
+        end
+    end
+```
+
+---
+
+## UC19 — Item Substitution During Pick
+
+```mermaid
+sequenceDiagram
+    participant WMS as WMS
+    participant SC as Sprint Connect
+    participant POS as POS
+    actor C as Customer
+    participant GW as Gateway
+
+    Note over SC: Precondition: Order is PickStarted
+
+    WMS->>SC: POST /webhooks/wms/pick-confirmed (inbound)
+    Note over SC,WMS: pickedLines: [{originalLineId, pickedAmount=0}, ...]\nsubstitutions: [{originalLineId, substituteSku,\n  substitutePrice, qty, uom}]
+
+    Note over SC: Webhook received — source=WMS, event=PickConfirmed, substitutions=1\norder.ConfirmPick(pickedLines) — status → PickConfirmed\norder.RecordSubstitution(...) for each substitution
+
+    Note over SC: New OrderLine added: is_substitute=true\nOrderLineSubstitution record created\npos_recalc_pending=true
+
+    alt substitution_flag = true (auto-approve)
+        Note over SC: customer_approved=true immediately\nSubstitutionProposedEvent (auto) → outbox (internal)
+        SC->>POS: PickConfirmedEvent (outbox → POS for recalc)
+        POS->>SC: POST /webhooks/pos/recalculation-result (inbound)
+        Note over SC: Webhook received — source=POS\npos_recalc_pending=false
+        SC-->>GW: Updated total (substitute item price applied)
+
+    else substitution_flag = false (approval required)
+        Note over SC: customer_approved=null (pending)\nSubstitutionProposedEvent → outbox (internal)
+        SC-->>GW: Substitution proposal — customer action required
+        GW-->>C: Proposed substitute: [SKU, name, price, image]
+
+        alt Customer approves
+            C->>GW: PATCH /orders/{id}/substitutions/{subId}/approve
+            GW->>SC: ApproveSubstitutionCommand
+            Note over SC: order.ApproveSubstitution(substitutionId)\ncustomer_approved=true\nSubstitutionApprovedEvent → outbox (internal)
+            SC->>POS: PickConfirmedEvent (outbox → POS, all substitutions resolved)
+            POS->>SC: POST /webhooks/pos/recalculation-result (inbound)
+            Note over SC: pos_recalc_pending=false
+            SC-->>GW: Updated total (with approved substitute)
+
+        else Customer rejects
+            C->>GW: PATCH /orders/{id}/substitutions/{subId}/reject
+            GW->>SC: RejectSubstitutionCommand
+            Note over SC: order.RejectSubstitution(substitutionId)\ncustomer_approved=false\nSubstitute OrderLine cancelled\nSubstitutionRejectedEvent → outbox (internal)\npos_recalc_pending=true
+            SC->>POS: PickConfirmedEvent (outbox → POS, basket without substitute)
+            POS->>SC: POST /webhooks/pos/recalculation-result (inbound)
+            Note over SC: pos_recalc_pending=false (lower total — substitute removed)
+            SC-->>GW: Updated total (substitute removed)
+        end
+    end
+
+    Note over SC: MarkPacked blocked until pos_recalc_pending=false\nOrder proceeds normally from PickConfirmed
+```
+
+---
+
+## UC18 — View Order Timeline
+
+```mermaid
+sequenceDiagram
+    actor OPS as Ops / Support
+    participant SC as Sprint Connect
+    participant DB as PostgreSQL (orders schema)
+
+    OPS->>SC: GET /api/v1/orders/{orderId}/timeline
+    SC->>DB: SELECT * FROM order_status_history WHERE order_id = ?
+    SC->>DB: SELECT * FROM order_webhook_logs WHERE order_id = ?
+    SC->>DB: SELECT * FROM order_outbox WHERE order_id = ?
+
+    Note over SC: Merge three streams and sort by timestamp:\n  Domain  — every state transition (from→to, actor, detail)\n  Inbound — every webhook received from WMS/TMS/POS\n  Outbound — every event dispatched to WMS/TMS/POS
+
+    SC-->>OPS: OrderTimelineDto (merged, chronological)
+    Note over OPS: Example response:\n  Domain:   Created→Pending (gateway-user)\n  Domain:   Pending→BookingConfirmed (staff)\n  Outbound: BookingConfirmedEvent → WMS (status=Published)\n  Domain:   BookingConfirmed→PickStarted (staff)\n  Outbound: PickStartedEvent → WMS (status=Published)\n  Inbound:  PickConfirmed ← WMS (lines=5)\n  Domain:   PickStarted→PickConfirmed (WMS)\n  Outbound: PickConfirmedEvent → POS (status=Published)\n  Inbound:  RecalculationResult ← POS\n  Domain:   PickConfirmed→Packed (staff)\n  Outbound: OrderPackedEvent → TMS (status=Published)\n  Inbound:  PackageDispatched ← TMS (tracking=TRK001)\n  Domain:   Packed→OutForDelivery (TMS)\n  Inbound:  PackageDelivered ← TMS (tracking=TRK001)\n  Domain:   OutForDelivery→Delivered (TMS)\n  Outbound: DeliveredEvent → POS (status=Published)
+```
+
+---
+
+## UC21 — Supplier / Purchase Order Receipt (Inbound)
+
+```mermaid
+sequenceDiagram
+    actor Staff as Staff / ERP
+    participant SC as Sprint Connect
+    participant WMS as WMS
+    participant DB as PostgreSQL (orders schema)
+
+    Staff->>SC: POST /api/v1/inbound/purchase-orders\n(poNumber, supplierId, storeId, lines)
+    SC->>DB: INSERT purchase_orders + purchase_order_lines
+    Note over SC: PurchaseOrderCreatedEvent → outbox → WMS\nStatus: Created
+
+    SC->>WMS: PurchaseOrderCreatedEvent (outbox → WMS)
+    Note over WMS: WMS registers expected goods for receiving dock
+
+    Note over WMS: Supplier arrives at dock — WMS creates GoodsReceipt
+    WMS->>SC: POST /webhooks/wms/goods-receipt-confirmed\n(purchaseOrderId, lines[lineId, receivedQty, condition])
+    Note over SC: Webhook received — source=WMS, event=GoodsReceiptConfirmed\nPurchaseOrder.ConfirmGoodsReceipt(lines)\nStatus: PartiallyReceived or FullyReceived
+
+    Note over WMS: Staff inspects goods — WMS assigns Sloc per item
+    WMS->>SC: POST /webhooks/wms/purchase-order-put-away-confirmed\n(purchaseOrderId)
+    Note over SC: Webhook received — source=WMS, event=PutAwayConfirmed\nPurchaseOrder.ConfirmPutAway()\nStock ledger updated
+
+    alt Partial receipt
+        Note over SC: Discrepancy flagged for buyer follow-up\nPO remains open until closed manually
+    end
+```
+
+---
+
+## UC22 — Inter-store Stock Transfer (Inbound)
+
+```mermaid
+sequenceDiagram
+    actor Staff as Dest Store Staff
+    participant SC as Sprint Connect
+    participant WMS_S as WMS (Source)
+    participant WMS_D as WMS (Dest)
+    participant TMS as TMS
+    participant DB as PostgreSQL (orders schema)
+
+    Staff->>SC: POST /api/v1/inbound/transfer-orders\n(transferNumber, sourceStoreId, destStoreId, lines)
+    SC->>DB: INSERT transfer_orders + transfer_order_lines
+    Note over SC: TransferOrderCreatedEvent → outbox → WMS (source)\nStatus: Created
+
+    SC->>WMS_S: TransferOrderCreatedEvent (outbox)
+    Note over WMS_S: Source store picks items for transfer
+
+    WMS_S->>SC: POST /webhooks/wms/transfer-pick-confirmed\n(transferOrderId, lines[lineId, transferredQty])
+    Note over SC: Webhook received — source=WMS, event=TransferPickConfirmed\nTransferOrder.ConfirmPick(lines)\nTransferPickConfirmedEvent → outbox → TMS\nStatus: PickConfirmed
+
+    SC->>TMS: TransferPickConfirmedEvent (register shipment)
+    TMS-->>SC: TrackingId assigned
+
+    TMS->>SC: POST /webhooks/tms/package-dispatched\n(transferOrderId, trackingId)
+    Note over SC: TransferOrder.MarkInTransit(trackingId)\nStatus: InTransit
+
+    TMS->>SC: POST /webhooks/tms/package-delivered\n(transferOrderId, trackingId)
+    Note over SC: Package arrives at destination store
+
+    WMS_D->>SC: POST /webhooks/wms/transfer-received\n(transferOrderId)
+    Note over SC: Webhook received — source=WMS, event=TransferReceived\nTransferOrder.ConfirmReceived() → Complete()\nTransferOrderCompletedEvent raised\nStatus: Completed\nStock balances updated at both stores
+```
+
+---
+
+## UC23 — Damaged Goods Return Receipt (Inbound)
+
+```mermaid
+sequenceDiagram
+    participant TMS as TMS Driver
+    participant WMS as WMS
+    participant SC as Sprint Connect
+    participant DB as PostgreSQL (orders schema)
+
+    Note over SC: Precondition: UC20 Path A — order OnHold, replacement sent, driver returns damaged package
+
+    TMS->>WMS: Driver returns damaged package to receiving dock
+    WMS->>SC: POST /webhooks/wms/damaged-goods-received\n(orderId, trackingId)
+    Note over SC: Webhook received — source=WMS, event=DamagedGoodsReceived\nOrder.ConfirmDamagedGoodsReceived(trackingId)\nDamagedGoodsReceivedEvent raised (internal)
+
+    Note over WMS: Staff inspects items — assigns ItemCondition per SKU
+    WMS->>SC: POST /webhooks/wms/damaged-goods-put-away-confirmed\n(orderId, trackingId, items[sku, condition, sloc])
+    Note over SC: Webhook received — source=WMS, event=DamagedGoodsPutAwayConfirmed\nOrder.ConfirmDamagedGoodsPutAway(trackingId)\nDamagedGoodsPutAwayConfirmedEvent raised
+
+    Note over SC: Resolution by condition:\n  Resellable → stock restored to available inventory\n  Repairable → flagged for repair workflow\n  Dispose   → written off; insurance/cost-of-goods adjustment triggered
+
+    Note over SC: Damaged goods record closed\nLinked to original order for audit trail
+```
+
+---
+
+## UC24 — End-to-End: Inbound Receipt to Outbound Delivery
+
+```mermaid
+sequenceDiagram
+    actor SUP as Supplier
+    actor C as Customer
+    participant SC as Sprint Connect
+    participant WMS as WMS
+    participant POS as POS
+    participant TMS as TMS
+    participant DB as PostgreSQL (orders schema)
+
+    rect rgb(230, 245, 255)
+        Note over SUP,WMS: Phase 1 — Inbound: Goods Arrive at Warehouse (UC21)
+
+        SC->>DB: INSERT purchase_orders (status=Created)
+        SC->>WMS: PurchaseOrderCreatedEvent (outbox)\nWMS registers expected delivery at dock
+
+        SUP->>WMS: Delivers goods to receiving dock
+        WMS->>SC: POST /webhooks/wms/goods-receipt-confirmed\n(purchaseOrderId, lines[lineId, receivedQty, condition])
+        Note over SC: Webhook received — source=WMS, event=GoodsReceiptConfirmed\nPurchaseOrder.ConfirmGoodsReceipt(lines)\nPO status → FullyReceived / PartiallyReceived
+
+        Note over WMS: Warehouse staff inspects goods\nWMS assigns Sloc per item
+        WMS->>SC: POST /webhooks/wms/purchase-order-put-away-confirmed
+        Note over SC: Webhook received — source=WMS, event=PutAwayConfirmed\nPurchaseOrder.ConfirmPutAway()
+
+        Note over WMS: ✓ Stock available — SKUs incremented in WMS inventory\n  Picker can now find goods at assigned Sloc
+    end
+
+    rect rgb(240, 255, 240)
+        Note over C,TMS: Phase 2 — Outbound: Customer Order Fulfilled (UC1)
+
+        C->>SC: POST /api/v1/orders (includes SKUs from received PO)
+        Note over SC: Order created — OrderCreatedEvent → outbox → WMS\nStatus: Pending → BookingConfirmed
+
+        SC->>WMS: BookingConfirmedEvent + PickStartedEvent (outbox)
+        Note over WMS: Picker walks to Sloc (same location from put-away)\nPicks goods placed there during inbound phase
+
+        WMS->>SC: POST /webhooks/wms/pick-confirmed (inbound)
+        Note over SC: Webhook received — source=WMS, event=PickConfirmed\nPickConfirmedEvent → outbox → POS
+
+        SC->>POS: PickConfirmedEvent
+        POS->>SC: POST /webhooks/pos/recalculation-result
+        Note over SC: Prices confirmed\nOrder → PickConfirmed
+
+        Note over WMS: Items packed into packages with TrackingIds
+        Note over SC: Order.MarkPacked() — OrderPackedEvent → outbox → TMS
+
+        SC->>TMS: OrderPackedEvent (outbox)
+        TMS->>SC: POST /webhooks/tms/package-dispatched
+        Note over SC: Order → OutForDelivery
+
+        TMS->>SC: POST /webhooks/tms/package-delivered
+        Note over SC: Order → Delivered\nDeliveredEvent → outbox → POS (invoice trigger)
+        SC-->>C: Notify Paid — order closed
+    end
+
+    Note over SC,WMS: OMS orchestrates both phases.\nWMS owns actual stock counts — the bridge between inbound and outbound\nis entirely inside WMS: put-away increments stock;\nPickStarted decrements it.
 ```

@@ -67,7 +67,12 @@ Do NOT split into microservices yet. The reasons:
 | State machine in `AllowedStatusSetting` config | State machine enforced in Order aggregate code |
 | Logging in domain DB | Separate `audit` database |
 | `OrderItemFulFillment` per item | `fulfillment_type` and `delivery_slot` at Order level |
+| `unit_price` overwritten by POS | `original_unit_price` preserved on `order_lines`; recalculated price in `order_line_amounts` |
+| No POS recalculation round tracking | `recalc_round` + `trigger_event` on `order_line_amounts`; multiple rows per line per round |
+| No guard against premature TMS dispatch | `pos_recalc_pending` flag on `orders`; blocks `MarkPacked` until POS responds |
 | `OrderSagaTb` flat table | Replaced by Outbox pattern (already in D018/D019) |
+| No state-change audit trail | `order_status_history` records every domain transition: `from_status`, `to_status`, `changed_by`, `detail`, `changed_at` |
+| No inbound event log from external systems | `order_webhook_logs` records each webhook received from WMS/TMS/POS: `source_system`, `event_type`, `detail`, `received_at` |
 
 ---
 
@@ -89,6 +94,7 @@ erDiagram
         varchar fulfillment_type
         varchar payment_method
         bool substitution_flag
+        bool pos_recalc_pending
         timestamptz created_at
         timestamptz updated_at
         varchar created_by
@@ -104,7 +110,7 @@ erDiagram
         decimal requested_amount
         decimal picked_amount
         varchar unit_of_measure
-        decimal unit_price
+        decimal original_unit_price
         varchar currency
         varchar status
         bool is_substitute
@@ -132,6 +138,7 @@ erDiagram
         varchar vehicle_type
         varchar status
         decimal package_weight
+        varchar delivery_note_number
         timestamptz created_at
         timestamptz updated_at
     }
@@ -205,6 +212,25 @@ erDiagram
         timestamptz next_retry_at
     }
 
+    order_status_history {
+        uuid history_id PK
+        uuid order_id FK
+        varchar from_status
+        varchar to_status
+        varchar changed_by
+        varchar detail
+        timestamptz changed_at
+    }
+
+    order_webhook_logs {
+        uuid webhook_log_id PK
+        uuid order_id
+        varchar source_system
+        varchar event_type
+        varchar detail
+        timestamptz received_at
+    }
+
     orders ||--o{ order_lines : "contains"
     orders ||--o{ order_packages : "packed into"
     orders ||--o{ order_addresses : "has"
@@ -212,6 +238,8 @@ erDiagram
     orders ||--o| delivery_slots : "scheduled in"
     orders ||--o{ order_holds : "paused via"
     orders ||--o{ order_outbox : "emits"
+    orders ||--o{ order_status_history : "transitions recorded in"
+    orders ||--o{ order_webhook_logs : "receives from"
     order_lines ||--o{ order_package_lines : "assigned to"
     order_packages ||--o{ order_package_lines : "contains"
     order_lines ||--o| order_line_substitutions : "replaced by"
@@ -275,13 +303,16 @@ erDiagram
     order_line_amounts {
         uuid amount_id PK
         uuid order_line_id
+        int recalc_round
+        varchar trigger_event
+        decimal recalculated_unit_price
         varchar currency
         decimal gross_amount
         decimal net_amount
         decimal unit_gross_amount
         decimal unit_net_amount
+        timestamptz recalculated_at
         timestamptz created_at
-        timestamptz updated_at
     }
 
     order_line_taxes {

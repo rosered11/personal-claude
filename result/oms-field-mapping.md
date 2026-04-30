@@ -160,7 +160,7 @@ Old `PackageTb` stored one row **per SKU per box**. New design stores one row **
 | `ThirdPartyLogistic` | PackageTb | `third_party_logistic` | order_packages | ✅ |
 | `SourceOrderId` | PackageTb | `order_id` (uuid FK) | order_packages | 🔀 |
 | `PackageWeight` | PackageTb | `package_weight` | order_packages | ✅ |
-| `DeliveryNoteNo` | PackageTb | — | — | ❌ Dropped; TMS document ref |
+| `DeliveryNoteNo` | PackageTb | `delivery_note_number` | order_packages | ✅ Restored; generated at Packed state, one per Package |
 | `PdfUrl` | PackageTb | — | — | ❌ Dropped; document link not domain |
 | `KeyIdFromReturn` | PackageTb | — | — | ❌ Dropped |
 | `Sku` | PackageTb | `order_line_id` (FK) | order_package_lines | 🔀 Per-SKU row → per-package join table |
