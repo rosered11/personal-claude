@@ -11,7 +11,10 @@ A shared vocabulary for the Order Management System domain. All team members —
 | **Customer** | The end user who places a delivery order through the Gateway. |
 | **Picker** | Store staff responsible for physically collecting ordered items from store shelves. |
 | **Driver** | Delivery personnel assigned by TMS to transport an order to the customer. |
-| **Store Staff** | Generic term for any in-store employee who may initiate cancellations or reschedules. |
+| **Store Staff** | Generic term for any in-store employee who may initiate cancellations, reschedules, or inbound operations. |
+| **Supplier** | An external company (farm, distributor, manufacturer) that physically delivers goods to the warehouse against a Purchase Order. Not a user of Sprint Connect — their arrival triggers WMS receiving events. |
+| **Warehouse Receiving Staff** | Warehouse employees who physically count, verify, and check-in goods arriving at the receiving dock (for both PO and Transfer Order receipts). |
+| **Buyer** | Internal purchasing role responsible for creating Purchase Orders, monitoring receipt quantities, and resolving discrepancies between ordered and received quantities. |
 
 ---
 
@@ -44,6 +47,14 @@ A shared vocabulary for the Order Management System domain. All team members —
 | **OrderFullyDelivered** | The condition where all Packages in an Order have status `Delivered`. Only when this is true does the Order transition to `Delivered` and invoice generation begin. `IsFullyDelivered()` on the Order aggregate checks this. |
 | **Delivering** | Order lifecycle state indicating at least one Package is OutForDelivery or Delivered, but not all Packages are Delivered yet. Specific to multi-package orders. |
 
+| **PurchaseOrder (PO)** | An agreement to buy a specific set of goods from an external Supplier. Created by the Buyer or imported from ERP. OMS records the expected quantities per line and tracks what WMS actually receives. Distinct from a customer Order — a PO is goods *arriving at* the warehouse, not goods *leaving* it. |
+| **PurchaseOrderLine** | A single line inside a PurchaseOrder: one SKU, the quantity ordered (`OrderedQty`), and the quantity actually received (`ReceivedQty`). Discrepancy between the two triggers a short-receipt alert for the Buyer. |
+| **TransferOrder (TO)** | An internal stock movement instruction between two of your own stores or DCs. Raised by the destination store when it needs to replenish stock from a source store. No external Supplier involved — goods move within the business. |
+| **TransferOrderLine** | A single line inside a TransferOrder: one SKU, the quantity requested (`RequestedQty`), and the quantity actually transferred (`TransferredQty`). |
+| **Goods Receive Number (GRN)** | The unique reference number WMS assigns when it physically receives goods at the warehouse dock. Applies to both PO receipts and TO receipts. Stored on the record as confirmation that WMS has verified the physical arrival. |
+| **Receiving Dock** | The physical area of the warehouse where inbound goods (from Supplier or from another store) are unloaded, counted, and checked before put-away. WMS manages dock operations; OMS only records the outcome. |
+| **DamagedGoodsReceipt** | A record created when a damaged package (from an outbound delivery exception — UC20 Path A) is returned by the TMS driver to the warehouse dock. Linked to the original Order. Tracks damage inspection and per-item condition assignment. Not a customer-initiated return — it is a warehouse receiving event. |
+
 ---
 
 ## Fulfillment Types
@@ -55,6 +66,76 @@ Every Order carries a `FulfillmentType` that determines its state machine path a
 | **Delivery** | Standard home delivery. Requires Booking, WMS picking, and TMS dispatch. State path: `Pending → BookingConfirmed → PickStarted → PickConfirmed → OutForDelivery → Delivered`. |
 | **Click & Collect** | Customer collects the order at the store. No TMS involved. No delivery address needed. State path: `Pending → PickStarted → PickConfirmed → ReadyForCollection → Collected`. |
 | **Express** | Immediate dispatch with no booking or slot selection. State machine skips `BookingConfirmed` and goes `Pending → PickStarted` directly. TMS assigns the next available driver. |
+
+---
+
+## Inbound Flow Concepts
+
+> **Inbound** means goods *arriving at* the warehouse. **Outbound** means goods *leaving* the warehouse to a customer.
+> These terms always refer to the warehouse/logistics direction, never to API call direction.
+
+The OMS manages two types of inbound flow. Both end with goods physically on a warehouse shelf, available for outbound picking.
+
+### Purchase Order (PO) — goods bought from an external supplier
+
+The business decides it needs more stock. The Buyer creates a Purchase Order in Sprint Connect (or imports one from ERP). The Supplier drives a truck to the warehouse dock, unloads the goods, and WMS counts and shelves them.
+
+```
+Supplier truck
+    │  arrives at Receiving Dock
+    ▼
+WMS scans & counts ──► GRN assigned ──► Goods placed on shelf (Sloc)
+    │
+    └── OMS records: expected qty vs received qty per SKU
+```
+
+**Who owns what:**
+- OMS owns: the PO record, expected vs received quantities, status.
+- WMS owns: physical dock operations, storage location (Sloc) assignment, actual stock counts.
+
+**Status flow:** `Created → PartiallyReceived / FullyReceived → Closed`
+
+**Partial receipt:** If fewer goods arrive than ordered (e.g. supplier sent 480 units of 500 ordered), the PO status is `PartiallyReceived`. The Buyer is alerted. The PO stays open until explicitly closed.
+
+---
+
+### Transfer Order (TO) — stock moved between your own stores
+
+No external supplier involved. One of your own stores or DCs has surplus stock; another is running low. The destination store raises a Transfer Order. WMS at the source picks the items; your own TMS delivers them to the destination store.
+
+```
+Source Store (WMS picks items)
+    │  TMS delivers
+    ▼
+Destination Store (WMS receives, staff put away)
+    │
+    └── OMS records: requested qty vs transferred qty per SKU
+```
+
+**Who owns what:**
+- OMS owns: the TO record, source and destination stores, quantities, status.
+- WMS owns: picking at source, receiving and put-away at destination.
+- TMS owns: the transit leg between stores.
+
+**Status flow:** `Created → PickConfirmed → InTransit → Received → Completed`
+
+---
+
+### How Inbound connects to Outbound
+
+Both PO and TO end the same way: **goods land on a shelf in WMS**. Once shelved, those goods become part of WMS's available inventory. When a customer places an outbound Order for the same SKU, WMS picks from that same shelf.
+
+```
+Inbound (PO or TO)                Outbound (customer Order)
+─────────────────                 ────────────────────────
+PO/TO Created                     Order Created
+    ↓                                   ↓
+Goods received & shelved     →    WMS picks from that shelf
+    ↓                                   ↓
+PO/TO Closed                      Order Delivered → Paid
+```
+
+OMS never tracks the actual stock number — that is WMS's responsibility. OMS only records that a PO was received and put away (inbound side) and that a pick was confirmed with actual quantities (outbound side). The WMS is the stock-of-record system.
 
 ---
 
@@ -98,6 +179,29 @@ States are mutually exclusive. An Order moves forward through the lifecycle; the
 
 ---
 
+## Inbound Lifecycle States
+
+### Purchase Order States
+
+| State | Meaning |
+|---|---|
+| **Created** | PO has been created in OMS and dispatched to WMS. Supplier has not yet delivered. |
+| **PartiallyReceived** | WMS confirmed receipt of some but not all ordered lines/quantities. PO stays open — Buyer must follow up with Supplier for the remainder. |
+| **FullyReceived** | WMS confirmed receipt of all ordered quantities. All goods are on-hand but not yet shelved. |
+| **Closed** | All received goods have been put away (shelved). PO lifecycle is complete. If there was a short receipt, the Buyer explicitly closes the PO accepting the discrepancy. |
+
+### Transfer Order States
+
+| State | Meaning |
+|---|---|
+| **Created** | TO has been raised by the destination store and dispatched to WMS (source) for picking. |
+| **PickConfirmed** | WMS at the source store has picked and packed the transfer items. Goods are staged for collection. Triggers TMS shipment registration. |
+| **InTransit** | TMS has collected the goods from the source store and is transporting them to the destination store. |
+| **Received** | WMS at the destination store has confirmed goods have arrived and been counted. Put-away is in progress. |
+| **Completed** | All items have been put away at the destination store. Stock balances updated at both stores. Terminal state. |
+
+---
+
 ## Processes
 
 | Term | Definition |
@@ -127,6 +231,11 @@ States are mutually exclusive. An Order moves forward through the lifecycle; the
 | **ReceivedAtWarehouse** | Return lifecycle state indicating items have arrived at the warehouse receiving dock after TMS pickup. Precondition for inspection and Put Away. |
 | **PutAway** | Return lifecycle state indicating all items have been inspected and placed in their assigned Sloc (or disposal path). Triggers `RefundProcessed` if refund has not yet been issued. |
 | **Batch Sync** | The scheduled process by which Item Master data and Product Pictures are transferred from STS to Sprint Connect via File Gateway. Not triggered by a customer action. |
+| **GoodsReceipt** | The physical act of WMS counting and verifying goods that arrive at the receiving dock against a PurchaseOrder. WMS scans items, records actual quantities per line, and assigns a GRN. Sprint Connect records the outcome via `POST /webhooks/wms/goods-receipt-confirmed`. |
+| **InboundPutAway** | The act of WMS placing received goods (from a PO or TO) into their designated Sloc on the warehouse shelf. Distinct from Return Put Away — inbound goods are new stock, not returned goods. Triggered by `POST /webhooks/wms/purchase-order-put-away-confirmed` or `POST /webhooks/wms/transfer-received`. |
+| **TransferPick** | The act of WMS at the source store picking items listed in a TransferOrder and packing them for transit. Triggered after `TransferOrderCreated` is dispatched to WMS. Confirmed via `POST /webhooks/wms/transfer-pick-confirmed`. |
+| **ShortReceipt** | The condition where `ReceivedQty < OrderedQty` on one or more PurchaseOrderLines. Triggers `PartiallyReceived` status and a Buyer alert. The PO remains open until the Buyer closes it. |
+| **DamagedGoodsInspection** | The warehouse process of examining a returned damaged package (from UC20 Path A) and assigning `ItemCondition` per item: `Resellable`, `Repairable`, or `Dispose`. Performed before `ConfirmDamagedGoodsPutAway` is called. |
 
 ---
 
@@ -213,6 +322,18 @@ Events are facts — something that happened in the domain. Named in past tense.
 | **OrderFullyDelivered** | All Packages in the Order are Delivered. Raised by the Order aggregate when `IsFullyDelivered()` returns true. Triggers invoice generation. |
 | **OrderLinesModified** | Raised when one or more Order Lines are added, removed, or changed after Order creation. Carries the full list of `OrderLineModification` entries. Triggers POS Recalculation. |
 | **PackagesReassigned** | Raised when WMS replaces existing Package groupings before any Package is dispatched. Carries the updated groupings and vehicle types. Triggers TMS re-registration. |
+| **PurchaseOrderCreated** | A PurchaseOrder has been created and OMS is ready to receive goods. Dispatched → WMS so the dock knows what to expect. |
+| **GoodsReceiptConfirmed** | WMS has counted and verified received goods at the dock. Carries actual received quantities per line and the GRN. Internal event — no external system is notified. |
+| **PurchaseOrderPutAwayConfirmed** | WMS confirms all received goods have been shelved (put away). PO transitions to `Closed`. Internal event. |
+| **PurchaseOrderClosed** | The PurchaseOrder lifecycle is complete. Stock is available in WMS for outbound picking. Terminal state. |
+| **TransferOrderCreated** | A TransferOrder has been raised by the destination store. Dispatched → WMS (source) to begin picking. |
+| **TransferPickConfirmed** | WMS at the source store confirms items have been picked and packed for transit. Dispatched → TMS to register the shipment. |
+| **TransferOrderInTransit** | TMS has collected the transfer goods from the source store and is en route to the destination. Internal event. |
+| **TransferReceived** | WMS at the destination store confirms goods have arrived and been put away. TransferOrder → `Completed`. Internal event. |
+| **TransferOrderCompleted** | Transfer is fully complete. Stock balances updated at both source and destination stores. Terminal state. |
+| **DamagedGoodsReceived** | WMS confirms a damaged package (from UC20 Path A) has been checked in at the receiving dock. Linked to the original Order. Internal audit event. |
+| **DamagedGoodsPutAwayConfirmed** | WMS confirms all items in the damaged package have been inspected, condition assigned, and placed in their designated Sloc or disposal path. Internal audit event. |
+| **OrderReturned** | The parent Order transitions to `Returned` after the return put-away and refund are complete. Raised by `Order.MarkReturned()` inside `ConfirmPutAwayHandler` atomically with `RefundProcessed`. Terminal state for the Order. |
 
 ---
 
@@ -488,6 +609,59 @@ Append-only audit log — records are never updated, only inserted.
 
 ---
 
+### Inbound Module — `purchase_orders`
+
+| Field | Definition |
+|---|---|
+| `purchase_order_id` | UUID primary key. Internal identifier for the PO aggregate. |
+| `po_number` | Human-readable PO reference (e.g. `PO-2026-00001`). Unique. Used in Buyer and Supplier communication. |
+| `supplier_id` | Reference to the external Supplier who will deliver goods against this PO. |
+| `store_id` | The warehouse/store that will receive the goods. |
+| `status` | PO lifecycle state. Values: `Created`, `PartiallyReceived`, `FullyReceived`, `Closed`. See **Purchase Order States**. |
+| `expected_delivery_date` | When the Supplier is expected to arrive at the receiving dock. |
+| `goods_receive_no` | WMS GRN assigned at the point of physical receipt. Null until `GoodsReceiptConfirmed`. See **Goods Receive Number (GRN)**. |
+
+---
+
+### Inbound Module — `purchase_order_lines`
+
+| Field | Definition |
+|---|---|
+| `purchase_order_line_id` | UUID primary key. |
+| `sku` | Product identifier matching the Item Master. |
+| `ordered_qty` | Quantity the Buyer expects to receive from the Supplier. Set at PO creation. Never overwritten. |
+| `received_qty` | Quantity WMS actually counted at the receiving dock. Set by `GoodsReceiptConfirmed`. May be less than `ordered_qty` (short receipt). |
+| `unit_cost` | Purchase cost per unit agreed with the Supplier. Used for inventory valuation. |
+| `condition` | Quality of received goods. Values: `Good`, `Damaged`. Set by WMS during goods receipt inspection. |
+
+---
+
+### Inbound Module — `transfer_orders`
+
+| Field | Definition |
+|---|---|
+| `transfer_order_id` | UUID primary key. Internal identifier for the TO aggregate. |
+| `transfer_number` | Human-readable TO reference (e.g. `TO-2026-00001`). Unique. Used in inter-store communication. |
+| `source_store_id` | The store or DC that will pick and ship the goods. |
+| `dest_store_id` | The store or DC that will receive the goods. |
+| `status` | TO lifecycle state. Values: `Created`, `PickConfirmed`, `InTransit`, `Received`, `Completed`. See **Transfer Order States**. |
+| `tracking_id` | TMS tracking reference for the transit leg. Assigned when `TransferPickConfirmed` is dispatched to TMS. |
+| `requested_at` | When the destination store raised the transfer request. |
+| `completed_at` | When the TO reached `Completed` state. |
+
+---
+
+### Inbound Module — `transfer_order_lines`
+
+| Field | Definition |
+|---|---|
+| `transfer_order_line_id` | UUID primary key. |
+| `sku` | Product identifier matching the Item Master. |
+| `requested_qty` | Quantity the destination store is requesting. Set at TO creation. |
+| `transferred_qty` | Quantity WMS at the source actually picked and packed. Set by `TransferPickConfirmed`. May be less than `requested_qty` if stock is insufficient at source. |
+
+---
+
 ### Configuration Module — `store_locations`
 
 | Field | Definition |
@@ -564,3 +738,11 @@ These terms are ambiguous or belong to a specific system — avoid using them to
 | "Shipment" | **Package** — Shipment is removed; Package is now both physical unit and dispatch unit |
 | "order type" (informally) | **FulfillmentType** (Delivery / ClickAndCollect / Express) |
 | "order source" / "channel" | **OrderChannel** (Gateway / B2B / Kiosk) |
+| "inbound order" (without context) | Specify: **PurchaseOrder** (from supplier) or **TransferOrder** (between stores) |
+| "receive goods" (vague) | **GoodsReceipt** (PO) or **TransferReceived** (TO) — they are separate events with different webhooks |
+| "stock transfer" | **TransferOrder** — must be created in OMS and tracked through the TO lifecycle |
+| "put away" without qualifier | Distinguish: **InboundPutAway** (PO/TO new stock) vs **Return Put Away** (customer returns) — different flows, different aggregates |
+| "the WMS has the stock" | The WMS is the **stock-of-record** — OMS orchestrates inbound/outbound events but never holds inventory counts |
+| "supplier order" | **PurchaseOrder (PO)** — the supplier does not place an order; the Buyer creates a PO to receive goods from a supplier |
+| "internal transfer" / "store transfer" | **TransferOrder (TO)** — use the full term to avoid confusion with financial transfers |
+| "inbound webhook" / "outbound webhook" | **Webhook received** (inbound API event from WMS/TMS/POS) vs **Event dispatched** (outbox event sent to WMS/TMS/POS). "Inbound/outbound" is reserved for warehouse goods direction only. |

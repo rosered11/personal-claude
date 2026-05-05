@@ -358,3 +358,95 @@ journey
     section Continue
       Delivery proceeds with updated package groupings: 5: Sprint Connect, TMS
 ```
+
+---
+
+## UC21 — Supplier / Purchase Order Receipt (Inbound)
+
+```mermaid
+journey
+    title UC21: Supplier PO Receipt — Inbound Goods
+    section Create PO
+      Staff creates PurchaseOrder in OMS: 4: Sprint Connect
+      PurchaseOrderCreatedEvent dispatched to WMS: 4: Sprint Connect, WMS
+      WMS registers expected delivery at receiving dock: 4: WMS
+    section Supplier Arrives
+      Supplier arrives at dock with goods: 3: Supplier
+      WMS creates GoodsReceipt — counts each line: 4: WMS, Warehouse Staff
+      WMS sends GoodsReceiptConfirmed webhook: 4: WMS
+      OMS records received quantities — PO → PartiallyReceived / FullyReceived: 5: Sprint Connect
+    section Put Away
+      Warehouse staff inspects goods and assigns conditions: 3: Warehouse Staff
+      WMS assigns Sloc per item and confirms put-away: 4: WMS
+      WMS sends PurchaseOrderPutAwayConfirmed webhook: 4: WMS
+      OMS closes PO → Closed; WMS stock now available: 5: Sprint Connect, WMS
+```
+
+---
+
+## UC22 — Inter-store Stock Transfer (Inbound)
+
+```mermaid
+journey
+    title UC22: Inter-store Transfer — Inbound at Destination
+    section Raise Transfer
+      Destination store creates TransferOrder in OMS: 4: Sprint Connect
+      TransferOrderCreatedEvent dispatched to WMS source: 4: Sprint Connect, WMS
+    section Pick at Source
+      WMS source picks and packs the items: 4: WMS, Warehouse Staff
+      WMS sends TransferPickConfirmed webhook: 4: WMS
+      OMS status → PickConfirmed; TMS notified: 5: Sprint Connect, TMS
+    section In Transit
+      TMS dispatches — package out for delivery: 4: TMS
+      OMS status → InTransit: 4: Sprint Connect
+    section Receive at Destination
+      TMS delivers — PackageDelivered webhook: 4: TMS
+      WMS destination confirms receipt and put-away: 4: WMS, Warehouse Staff
+      WMS sends TransferReceived webhook: 4: WMS
+      OMS status → Completed; stock balances updated at both stores: 5: Sprint Connect
+```
+
+---
+
+## UC23 — Damaged Goods Return Receipt (Inbound)
+
+```mermaid
+journey
+    title UC23: Damaged Goods Return — Driver Returns to Warehouse
+    section Package Arrives at Dock
+      TMS driver returns damaged package to dock: 3: TMS
+      WMS checks in damaged package — DamagedGoodsReceived webhook: 4: WMS
+      OMS links to original order; DamagedGoodsReceivedEvent raised: 4: Sprint Connect
+    section Inspect and Put Away
+      Warehouse staff inspects each item — assigns condition: 3: Warehouse Staff
+      WMS assigns Sloc per condition: 4: WMS
+      WMS sends DamagedGoodsPutAwayConfirmed webhook: 4: WMS
+    section Resolve by Condition
+      Resellable items: stock restored to available inventory: 5: Sprint Connect, WMS
+      Repairable items: flagged for repair workflow: 3: Sprint Connect
+      Dispose items: written off — insurance adjustment triggered: 3: Sprint Connect
+      Damaged goods record closed and linked to original order: 5: Sprint Connect
+```
+
+---
+
+## UC24 — End-to-End: Inbound Receipt to Outbound Delivery
+
+```mermaid
+journey
+    title UC24: PO Receipt → WMS Stock → Customer Delivery
+    section Inbound Phase (UC21)
+      Staff creates PO — WMS notified of expected goods: 4: Sprint Connect, WMS
+      Supplier delivers — GoodsReceiptConfirmed: 4: WMS, Supplier
+      Put-away confirmed — stock available in WMS: 5: WMS
+    section WMS Stock Bridge
+      WMS increments available inventory for received SKUs: 5: WMS
+      OMS does not own stock counts — WMS is stock-of-record: 4: Sprint Connect
+    section Outbound Phase (UC1)
+      Customer places order — OrderCreated: 4: Sprint Connect
+      WMS picks from shelf assigned during put-away: 4: WMS, Warehouse Staff
+      PickConfirmed — POS recalculation applied: 5: Sprint Connect, POS
+      Packages assigned — TMS schedules driver: 4: Sprint Connect, TMS
+      Driver dispatches — PackageOutForDelivery: 4: TMS
+      Delivered — invoice generated — order paid: 5: Sprint Connect, POS, Customer
+```

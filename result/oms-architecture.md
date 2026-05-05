@@ -154,9 +154,16 @@ Each module has its **own DB schema** and its **own DbContext**. Cross-module ac
 │  │  order_outbox     │  │                   │  │                 │  │
 │  │  order_status_    │  │                   │  │                 │  │
 │  │    history        │  │                   │  │                 │  │
-│  │  order_inbound_   │  │                   │  │                 │  │
+│  │  order_webhook_   │  │                   │  │                 │  │
 │  │    logs           │  │                   │  │                 │  │
 │  └──────────────────┘  └──────────────────┘  └─────────────────┘  │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │              Inbound Module (schema: inbound)                 │  │
+│  │   PurchaseOrder aggregate · PurchaseOrderLine entity         │  │
+│  │   TransferOrder aggregate · TransferOrderLine entity         │  │
+│  │   DamagedGoodsReceipt (extends Returns)                      │  │
+│  └──────────────────────────────────────────────────────────────┘  │
 │                                                                     │
 │  ┌──────────────────────────────────────────────────────────────┐  │
 │  │              Configuration Module (schema: config)            │  │
@@ -178,6 +185,8 @@ Each module has its **own DB schema** and its **own DbContext**. Cross-module ac
 | Payment Module | Order Module | Read `order_id` only; never joins `orders` table directly |
 | Returns Module | Order Module | Reads order state via OrderQuery service (in-process call, same process) |
 | Returns Module | Payment Module | Triggers refund via `IRefundService` interface — no direct DB access |
+| Inbound Module | Order Module | Reads `order_id` for DamagedGoodsReceipt linkage only — no direct joins |
+| Inbound Module | Config Module | Read-only store/location lookup via `IConfigurationService` |
 | All modules | Config Module | Read-only config lookup via `IConfigurationService` |
 | Any module | Any module | Domain events via Outbox only for cross-boundary side-effects |
 
@@ -200,8 +209,8 @@ sequenceDiagram
 
     CMD->>AGG: ConfirmPick(orderId, pickedLines)
     AGG->>AGG: Raise PickConfirmedEvent + record OrderStatusHistory
-    Note over CMD,DB: Inbound log staged BEFORE save (if from external system)
-    CMD->>DB: Stage InboundLog (source=WMS, event=PickConfirmed) to change tracker
+    Note over CMD,DB: Webhook log staged BEFORE save (if from external system)
+    CMD->>DB: Stage WebhookLog (source=WMS, event=PickConfirmed) to change tracker
     CMD->>DB: Stage OrderOutbox entries (PickConfirmedEvent → POS) to change tracker
     CMD->>DB: BEGIN TRANSACTION
     CMD->>DB: UPDATE orders (status + status_history)
@@ -236,13 +245,27 @@ Each adapter translates between OMS domain language and external system contract
 
 External systems call back into OMS via the Webhook Controller:
 
+**Outbound Order webhooks:**
 ```
-POST /webhooks/wms/pick-confirmed      → ConfirmPickCommand       (source=WMS)
-POST /webhooks/wms/put-away-confirmed  → ConfirmPutAwayCommand    (source=WMS)
-POST /webhooks/tms/package-dispatched  → PackageOutForDeliveryCommand (source=TMS)
-POST /webhooks/tms/package-delivered   → PackageDeliveredCommand  (source=TMS)
-POST /webhooks/tms/package-lost        → PackageLostCommand       (source=TMS)
-POST /webhooks/pos/recalculation-result → ApplyPosRecalculationCommand (source=POS)
+POST /webhooks/wms/pick-confirmed                    → ConfirmPickCommand                (source=WMS)
+POST /webhooks/wms/put-away-confirmed                → ConfirmPutAwayCommand             (source=WMS)
+POST /webhooks/tms/package-dispatched                → PackageOutForDeliveryCommand      (source=TMS)
+POST /webhooks/tms/package-delivered                 → PackageDeliveredCommand           (source=TMS)
+POST /webhooks/tms/package-lost                      → PackageLostCommand                (source=TMS)
+POST /webhooks/pos/recalculation-result              → ApplyPosRecalculationCommand      (source=POS)
+POST /webhooks/tms/return-pickup-scheduled           → ReturnPickupScheduledCommand      (source=TMS)
+POST /webhooks/tms/return-pickup-confirmed           → ReturnPickupConfirmedCommand      (source=TMS)
+POST /webhooks/wms/return-received-at-warehouse      → ReturnReceivedAtWarehouseCommand  (source=WMS)
+```
+
+**Inbound Order webhooks (UC21–UC23):**
+```
+POST /webhooks/wms/goods-receipt-confirmed           → ConfirmGoodsReceiptCommand            (source=WMS)
+POST /webhooks/wms/purchase-order-put-away-confirmed → ConfirmPurchaseOrderPutAwayCommand    (source=WMS)
+POST /webhooks/wms/transfer-pick-confirmed           → ConfirmTransferPickCommand             (source=WMS)
+POST /webhooks/wms/transfer-received                 → ConfirmTransferReceivedCommand         (source=WMS)
+POST /webhooks/wms/damaged-goods-received            → ConfirmDamagedGoodsReceivedCommand     (source=WMS)
+POST /webhooks/wms/damaged-goods-put-away-confirmed  → ConfirmDamagedGoodsPutAwayCommand      (source=WMS)
 ```
 
 All webhook endpoints:
@@ -279,6 +302,15 @@ Each inbound command handler:
 | `InvoiceGeneratedEvent` / `PaymentNotifiedEvent` | POS |
 | `ReturnRequestedEvent` | TMS |
 | `PutAwayConfirmedEvent` | POS |
+| `PurchaseOrderCreatedEvent` | WMS |
+| `GoodsReceiptConfirmedEvent` | — (internal; triggers stock ledger update) |
+| `PurchaseOrderPutAwayConfirmedEvent` | — (internal; closes PO) |
+| `TransferOrderCreatedEvent` | WMS (source store) |
+| `TransferPickConfirmedEvent` | TMS |
+| `TransferReceivedEvent` | — (internal; updates stock balances) |
+| `TransferOrderCompletedEvent` | — (internal audit) |
+| `DamagedGoodsReceivedEvent` | — (internal; links to original order) |
+| `DamagedGoodsPutAwayConfirmedEvent` | — (internal; triggers stock/write-off action) |
 
 ---
 

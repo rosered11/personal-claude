@@ -520,6 +520,85 @@ erDiagram
 
 ---
 
+## ER Diagram — Inbound Module (schema: inbound)
+
+> Covers UC21 (Purchase Order Receipt), UC22 (Inter-store Transfer), and UC23 (Damaged Goods Return). These are entirely new tables — no legacy equivalents.
+
+```mermaid
+erDiagram
+    purchase_orders {
+        uuid purchase_order_id PK
+        varchar po_number UK
+        uuid supplier_id
+        uuid store_id FK
+        varchar status
+        varchar goods_receive_no
+        timestamptz created_at
+        timestamptz updated_at
+        varchar updated_by
+    }
+
+    purchase_order_lines {
+        uuid po_line_id PK
+        uuid purchase_order_id FK
+        varchar sku
+        int ordered_qty
+        int received_qty
+        decimal unit_cost
+        varchar currency
+        varchar condition
+        varchar sloc
+        timestamptz received_at
+        timestamptz put_away_at
+    }
+
+    transfer_orders {
+        uuid transfer_order_id PK
+        varchar transfer_number UK
+        uuid source_store_id FK
+        uuid dest_store_id FK
+        varchar status
+        varchar tracking_id
+        timestamptz created_at
+        timestamptz updated_at
+        varchar updated_by
+    }
+
+    transfer_order_lines {
+        uuid to_line_id PK
+        uuid transfer_order_id FK
+        varchar sku
+        int requested_qty
+        int transferred_qty
+        timestamptz confirmed_at
+    }
+
+    damaged_goods_receipts {
+        uuid damaged_receipt_id PK
+        uuid order_id FK
+        varchar tracking_id
+        varchar status
+        timestamptz received_at
+        timestamptz put_away_at
+        varchar updated_by
+    }
+
+    damaged_goods_items {
+        uuid item_id PK
+        uuid damaged_receipt_id FK
+        varchar sku
+        varchar condition
+        varchar sloc
+        timestamptz confirmed_at
+    }
+
+    purchase_orders ||--o{ purchase_order_lines : "contains"
+    transfer_orders ||--o{ transfer_order_lines : "contains"
+    damaged_goods_receipts ||--o{ damaged_goods_items : "inspects"
+```
+
+---
+
 ## Summary: Old vs New
 
 | Concern | Old Schema | New Design |
@@ -534,3 +613,6 @@ erDiagram
 | Fulfillment routing | `OrderProcessConditionTb` + `OrderItemFulFillment` | `fulfillment_routing_rules` config + `FulfillmentRouter` domain service |
 | Returns | `OrderReturn` + `OrderReturnItem` (flat) | `returns` module with status + `return_refunds` |
 | Outbox | `OrderOutboxTb` (exists, good) | Improved: adds `retry_count`, `next_retry_at`, `jsonb` payload |
+| Inbound (PO) | ❌ None | ➕ New: `purchase_orders` + `purchase_order_lines` (UC21) |
+| Inbound (Transfer) | ❌ None | ➕ New: `transfer_orders` + `transfer_order_lines` (UC22) |
+| Inbound (Damaged) | ❌ None | ➕ New: `damaged_goods_receipts` + `damaged_goods_items` (UC23) |

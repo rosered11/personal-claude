@@ -36,6 +36,15 @@ graph TD
         GW_ADAPTER["GatewayAdapter\n(implements IGatewayPort)"]
     end
 
+    subgraph INBOUND["Inbound Module (schema: inbound)"]
+        PO["PurchaseOrder\n(Aggregate Root)"]
+        PO_LINE["PurchaseOrderLine\n(Entity)"]
+        TO["TransferOrder\n(Aggregate Root)"]
+        TO_LINE["TransferOrderLine\n(Entity)"]
+        DGR["DamagedGoodsReceipt\n(Aggregate Root)"]
+        DGI["DamagedGoodsItem\n(Entity)"]
+    end
+
     subgraph EVENTS["Domain Events"]
         E1["OrderCreated"]
         E2["BookingConfirmed"]
@@ -62,6 +71,17 @@ graph TD
         E23["ReturnRequested"]
         E24["RefundProcessed"]
         E25["PackageLost"]
+        E26["PurchaseOrderCreated"]
+        E27["GoodsReceiptConfirmed"]
+        E28["PurchaseOrderPutAwayConfirmed"]
+        E29["PurchaseOrderClosed"]
+        E30["TransferOrderCreated"]
+        E31["TransferPickConfirmed"]
+        E32["TransferOrderInTransit"]
+        E33["TransferReceived"]
+        E34["TransferOrderCompleted"]
+        E35["DamagedGoodsReceived"]
+        E36["DamagedGoodsPutAwayConfirmed"]
     end
 
     subgraph EXTERNAL["External Systems"]
@@ -124,6 +144,25 @@ graph TD
     E15 --> GW_ADAPTER
     E17 --> WMS_ADAPTER
     E12 --> GW_ADAPTER
+
+    PO --> PO_LINE
+    PO --> E26
+    PO --> E27
+    PO --> E28
+    PO --> E29
+    TO --> TO_LINE
+    TO --> E30
+    TO --> E31
+    TO --> E32
+    TO --> E33
+    TO --> E34
+    DGR --> DGI
+    DGR --> E35
+    DGR --> E36
+
+    E26 --> WMS_ADAPTER
+    E30 --> WMS_ADAPTER
+    E31 --> TMS_ADAPTER
 
     GW_ADAPTER <--> GW
     WMS_ADAPTER <--> WMS
@@ -448,6 +487,155 @@ stateDiagram-v2
     OutForDelivery --> Delivered : MarkDelivered [TMS triggers per TrackingId]
 
     Delivered --> [*]
+```
+
+---
+
+## Inbound Aggregate Detail
+
+```mermaid
+classDiagram
+    class PurchaseOrder {
+        +PurchaseOrderId id
+        +PoNumber poNumber
+        +SupplierId supplierId
+        +StoreId storeId
+        +PurchaseOrderStatus status
+        +GoodsReceiveNo grn
+        +List~PurchaseOrderLine~ lines
+        +DateTime createdAt
+        +DateTime updatedAt
+        +CreatePurchaseOrder(cmd) PurchaseOrder$
+        +ConfirmGoodsReceipt(receivedLines)
+        +ConfirmPutAway()
+        +ClosePurchaseOrder()
+    }
+
+    class PurchaseOrderLine {
+        +PoLineId id
+        +Sku sku
+        +int orderedQty
+        +int receivedQty
+        +Money unitCost
+        +ItemCondition condition
+        +Sloc sloc
+        +UpdateReceivedQty(qty, condition)
+    }
+
+    class PurchaseOrderStatus {
+        <<enumeration>>
+        Created
+        PartiallyReceived
+        FullyReceived
+        Closed
+    }
+
+    class TransferOrder {
+        +TransferOrderId id
+        +TransferNumber transferNumber
+        +StoreId sourceStoreId
+        +StoreId destStoreId
+        +TransferOrderStatus status
+        +TrackingId trackingId
+        +List~TransferOrderLine~ lines
+        +DateTime createdAt
+        +DateTime updatedAt
+        +CreateTransferOrder(cmd) TransferOrder$
+        +ConfirmPick(lines)
+        +MarkInTransit(trackingId)
+        +ConfirmReceived()
+        +Complete()
+    }
+
+    class TransferOrderLine {
+        +ToLineId id
+        +Sku sku
+        +int requestedQty
+        +int transferredQty
+        +UpdateTransferredQty(qty)
+    }
+
+    class TransferOrderStatus {
+        <<enumeration>>
+        Created
+        PickConfirmed
+        InTransit
+        Received
+        Completed
+    }
+
+    class DamagedGoodsReceipt {
+        +DamagedReceiptId id
+        +OrderId orderId
+        +TrackingId trackingId
+        +DamagedGoodsStatus status
+        +List~DamagedGoodsItem~ items
+        +ConfirmReceived(trackingId, orderId)
+        +ConfirmPutAway(items)
+    }
+
+    class DamagedGoodsItem {
+        +ItemId id
+        +Sku sku
+        +ItemCondition condition
+        +Sloc sloc
+        +AssignCondition(condition, sloc)
+    }
+
+    class ItemCondition {
+        <<enumeration>>
+        Resellable
+        Repairable
+        Dispose
+    }
+
+    PurchaseOrder --> PurchaseOrderLine
+    PurchaseOrder --> PurchaseOrderStatus
+    PurchaseOrderLine --> ItemCondition
+    TransferOrder --> TransferOrderLine
+    TransferOrder --> TransferOrderStatus
+    DamagedGoodsReceipt --> DamagedGoodsItem
+    DamagedGoodsItem --> ItemCondition
+```
+
+---
+
+## PurchaseOrder State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Created : CreatePurchaseOrder
+
+    Created --> PartiallyReceived : ConfirmGoodsReceipt [receivedQty < orderedQty on any line]
+    Created --> FullyReceived : ConfirmGoodsReceipt [all lines fully received]
+
+    PartiallyReceived --> FullyReceived : ConfirmGoodsReceipt [all lines now received]
+    PartiallyReceived --> Closed : ClosePurchaseOrder [buyer accepts partial]
+
+    FullyReceived --> Closed : ConfirmPutAway → ClosePurchaseOrder
+
+    Closed --> [*]
+```
+
+---
+
+## TransferOrder State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Created : CreateTransferOrder
+
+    Created --> PickConfirmed : ConfirmPick [WMS source confirms pick]
+    Created --> Cancelled : Cancel
+
+    PickConfirmed --> InTransit : MarkInTransit [TMS dispatches]
+
+    InTransit --> Received : ConfirmReceived [WMS destination confirms]
+
+    Received --> Completed : Complete [stock balances updated]
+
+    Cancelled --> [*]
+    Completed --> [*]
 ```
 
 ---

@@ -474,7 +474,101 @@ State machine was stored as config rows. Now enforced in Order aggregate code.
 
 ---
 
-## 5. Dropped Tables (No Mapping)
+## 5. Inbound Module
+
+> All tables in this module are **entirely new** — no legacy equivalents existed in the old schema. These support UC21 (Purchase Order Receipt), UC22 (Inter-store Transfer), and UC23 (Damaged Goods Return).
+
+### New: `purchase_orders`
+
+| Field | Type | Notes |
+|---|---|---|
+| `purchase_order_id` | uuid PK | Aggregate root identity |
+| `po_number` | varchar UK | Human-readable PO reference (e.g. `PO-2024-001`) |
+| `supplier_id` | uuid | Reference to supplier — external master data |
+| `store_id` | uuid FK | Receiving store / DC (`store_locations.store_id`) |
+| `status` | varchar | `Created / PartiallyReceived / FullyReceived / Closed` |
+| `goods_receive_no` | varchar | GRN assigned by WMS at physical receipt |
+| `created_at` | timestamptz | — |
+| `updated_at` | timestamptz | — |
+| `updated_by` | varchar | Staff / system that last updated |
+
+---
+
+### New: `purchase_order_lines`
+
+| Field | Type | Notes |
+|---|---|---|
+| `po_line_id` | uuid PK | — |
+| `purchase_order_id` | uuid FK | Parent `purchase_orders` |
+| `sku` | varchar | Product SKU |
+| `ordered_qty` | int | Expected quantity per this line |
+| `received_qty` | int | Actual count at goods receipt (WMS) |
+| `unit_cost` | decimal | Cost price per unit |
+| `currency` | varchar | ISO 4217 |
+| `condition` | varchar | `Resellable / Repairable / Dispose` — assigned at put-away |
+| `sloc` | varchar | Storage location assigned by WMS |
+| `received_at` | timestamptz | When GoodsReceiptConfirmed was processed |
+| `put_away_at` | timestamptz | When PurchaseOrderPutAwayConfirmed was processed |
+
+---
+
+### New: `transfer_orders`
+
+| Field | Type | Notes |
+|---|---|---|
+| `transfer_order_id` | uuid PK | Aggregate root identity |
+| `transfer_number` | varchar UK | Human-readable reference (e.g. `TR-2024-001`) |
+| `source_store_id` | uuid FK | Store picking and packing stock |
+| `dest_store_id` | uuid FK | Store receiving stock |
+| `status` | varchar | `Created / PickConfirmed / InTransit / Received / Completed` |
+| `tracking_id` | varchar | TMS tracking ID assigned after pick |
+| `created_at` | timestamptz | — |
+| `updated_at` | timestamptz | — |
+| `updated_by` | varchar | — |
+
+---
+
+### New: `transfer_order_lines`
+
+| Field | Type | Notes |
+|---|---|---|
+| `to_line_id` | uuid PK | — |
+| `transfer_order_id` | uuid FK | Parent `transfer_orders` |
+| `sku` | varchar | Product SKU |
+| `requested_qty` | int | Quantity requested for transfer |
+| `transferred_qty` | int | Actual quantity confirmed by WMS at pick |
+| `confirmed_at` | timestamptz | When TransferPickConfirmed was processed |
+
+---
+
+### New: `damaged_goods_receipts`
+
+| Field | Type | Notes |
+|---|---|---|
+| `damaged_receipt_id` | uuid PK | Aggregate root identity |
+| `order_id` | uuid FK | Linked to original `orders.order_id` (UC20 precondition) |
+| `tracking_id` | varchar | TMS tracking ID of the returned damaged package |
+| `status` | varchar | `Received / PutAwayConfirmed / Closed` |
+| `received_at` | timestamptz | When DamagedGoodsReceived webhook was processed |
+| `put_away_at` | timestamptz | When DamagedGoodsPutAwayConfirmed webhook was processed |
+| `updated_by` | varchar | — |
+
+---
+
+### New: `damaged_goods_items`
+
+| Field | Type | Notes |
+|---|---|---|
+| `item_id` | uuid PK | — |
+| `damaged_receipt_id` | uuid FK | Parent `damaged_goods_receipts` |
+| `sku` | varchar | Product SKU |
+| `condition` | varchar | `Resellable / Repairable / Dispose` — assigned by staff at put-away |
+| `sloc` | varchar | Storage or disposal location assigned by WMS |
+| `confirmed_at` | timestamptz | When condition was committed |
+
+---
+
+## 6. Dropped Tables (No Mapping)
 
 These tables are entirely removed from the new design:
 
