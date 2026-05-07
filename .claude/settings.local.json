@@ -7,7 +7,9 @@
       "Bash(python kb_score_temp.py)",
       "Bash(dotnet build *)",
       "Bash(xargs cat *)",
-      "Bash(xargs grep *)"
+      "Bash(xargs grep *)",
+      "Bash(Select-String -Path \"D:\\\\workspace\\\\personal-claude\\\\result\\\\web-ui\\\\index.html\" -Pattern \"ORDER_ACTIONS|ALL_USE_CASES|API_REFERENCE|OrderDetailView|UseCaseExplorer|ApiReferenceView|ReturnCard|RETURN_STATUS_COLOR|NAV_TABS\")",
+      "Bash(Select-Object LineNumber, Line)"
     ]
   }
 }
