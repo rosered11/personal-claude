@@ -128,40 +128,6 @@ const LINE_STATUS_COLOR = {
 const RETURN_STATUSES = ['ReturnRequested','PickupScheduled','PickedUp','ReceivedAtWarehouse','PutAway','Refunded'];
 
 // ─────────────────────────────────────────────────────────────
-// OPERATIONAL UTILITIES
-// ─────────────────────────────────────────────────────────────
-
-const SIMULATION_NOW  = new Date('2024-01-15T16:00:00Z');
-const CLOSED_STATUSES = new Set(['Cancelled', 'Returned']);
-
-function fmtOrderTime(iso) {
-  if (!iso) return null;
-  return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
-function slotUrgency(slot) {
-  if (!slot) return null;
-  const start = new Date(slot.scheduledStart);
-  const end   = new Date(slot.scheduledEnd);
-  if (SIMULATION_NOW > end)    return 'overdue';
-  if (SIMULATION_NOW >= start) return 'active';
-  if (start - SIMULATION_NOW <= 3600000) return 'soon';
-  return 'ok';
-}
-
-function orderUrgency(order) {
-  if (order.status === 'OnHold') return 'critical';
-  if (order.posRecalcPending)    return 'warning';
-  const activeForSlot = !['Delivered','Invoiced','Collected','Paid','Cancelled','Returned'].includes(order.status);
-  if (activeForSlot && order.deliverySlot) {
-    const su = slotUrgency(order.deliverySlot);
-    if (su === 'overdue')              return 'critical';
-    if (su === 'active' || su === 'soon') return 'warning';
-  }
-  return null;
-}
-
-// ─────────────────────────────────────────────────────────────
 // ORDER ACTIONS — available API calls per status
 // ─────────────────────────────────────────────────────────────
 
@@ -531,9 +497,9 @@ function OrderTimeline({ onBack }) {
             </p>
           </div>
           <div className="text-right shrink-0">
-            <div className="text-3xl font-bold text-gray-900">฿2,380</div>
+            <div className="text-3xl font-bold text-gray-900">₿2,380</div>
             <div className="text-xs text-gray-400">final (promo applied at recalc)</div>
-            <div className="text-xs text-gray-400 line-through">฿2,450 original</div>
+            <div className="text-xs text-gray-400 line-through">₿2,450 original</div>
           </div>
         </div>
       </div>
@@ -642,7 +608,7 @@ function OrderDetailView({ order, onBack, onViewTimeline }) {
             )}
           </div>
           <div className="text-right shrink-0">
-            <div className="text-2xl font-bold text-gray-900">฿{order.amount?.toLocaleString()}</div>
+            <div className="text-2xl font-bold text-gray-900">₿{order.amount?.toLocaleString()}</div>
             <div className="text-xs text-gray-400 mt-0.5">{order.items} items</div>
             {order.orderDate && (
               <div className="text-xs text-gray-400 mt-0.5">{formatDate(order.orderDate)}</div>
@@ -691,7 +657,7 @@ function OrderDetailView({ order, onBack, onViewTimeline }) {
                     <td className="py-2.5 px-3 text-right text-xs font-mono text-gray-600">{line.requestedAmount}</td>
                     <td className="py-2.5 px-3 text-right text-xs font-mono font-bold text-gray-800">{line.pickedAmount}</td>
                     <td className="py-2.5 px-3 text-xs text-gray-500">{line.uom}</td>
-                    <td className="py-2.5 px-3 text-right text-xs font-mono text-gray-700">฿{line.unitPrice}</td>
+                    <td className="py-2.5 px-3 text-right text-xs font-mono text-gray-700">₿{line.unitPrice}</td>
                     <td className="py-2.5 px-3">
                       <span className={`text-xs px-2 py-0.5 rounded font-medium ${LINE_STATUS_COLOR[line.status] || LINE_STATUS_COLOR.Active}`}>
                         {line.status || 'Active'}
@@ -732,24 +698,24 @@ function OrderDetailView({ order, onBack, onViewTimeline }) {
         </div>
       )}
 
-      {/* Actions */}
+      {/* Available API actions */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-4">
         <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">
-          Actions
-          <span className="ml-1.5 font-normal text-gray-300 normal-case">· {order.status}</span>
+          Available API Actions
+          <span className="ml-1.5 font-normal text-gray-300 normal-case">status: {order.status}</span>
         </div>
         {actions.length > 0 ? (
           <div className="space-y-2">
             {actions.map((action, i) => (
-              <div key={i} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer">
-                <span className="font-medium text-sm text-gray-800 flex-1">{action.label}</span>
-                <Badge text={action.uc} cls="bg-blue-50 text-blue-600 border border-blue-100 font-mono shrink-0" />
+              <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-gray-100 bg-gray-50 hover:bg-gray-100 transition-colors">
                 <span className={`shrink-0 text-xs font-bold font-mono px-2 py-0.5 rounded ${METHOD_BADGE[action.method] || 'bg-gray-100 text-gray-700'}`}>
                   {action.method}
                 </span>
-                <code className="text-xs text-gray-400 font-mono hidden lg:block max-w-xs truncate">
+                <code className="text-xs text-gray-700 font-mono flex-1 truncate">
                   {action.path.replace('{id}', order.id)}
                 </code>
+                <span className="text-xs text-gray-500 hidden sm:block">{action.label}</span>
+                <Badge text={action.uc} cls="bg-blue-50 text-blue-600 border border-blue-100 font-mono shrink-0" />
               </div>
             ))}
           </div>
@@ -773,9 +739,15 @@ function OrderDetailView({ order, onBack, onViewTimeline }) {
 // USE CASE EXPLORER
 // ─────────────────────────────────────────────────────────────
 
-function UCCard({ uc, expandedUC, setExpandedUC }) {
-  const isOpen = expandedUC === uc.id;
-  return (
+function UseCaseExplorer() {
+  const [expandedUC, setExpandedUC] = useState(null);
+
+  const outbound = ALL_USE_CASES.filter(uc => uc.section === 'outbound');
+  const inbound  = ALL_USE_CASES.filter(uc => uc.section === 'inbound');
+
+  function UCCard({ uc }) {
+    const isOpen = expandedUC === uc.id;
+    return (
       <div className={`border rounded-xl overflow-hidden transition-colors ${isOpen ? 'border-blue-200' : 'border-gray-200'}`}>
         <button
           onClick={() => setExpandedUC(isOpen ? null : uc.id)}
@@ -813,12 +785,8 @@ function UCCard({ uc, expandedUC, setExpandedUC }) {
         )}
       </div>
     );
-}
+  }
 
-function UseCaseExplorer() {
-  const [expandedUC, setExpandedUC] = useState(null);
-  const outbound = ALL_USE_CASES.filter(uc => uc.section === 'outbound');
-  const inbound  = ALL_USE_CASES.filter(uc => uc.section === 'inbound');
   return (
     <div className="max-w-4xl mx-auto p-4 pb-16">
       <div className="mb-6">
@@ -831,6 +799,7 @@ function UseCaseExplorer() {
         <em className="ml-1">Inbound Order</em> = goods arriving at the warehouse (supplier delivery, transfer, return).
       </div>
 
+      {/* Outbound section */}
       <section className="mb-8">
         <div className="flex items-center gap-3 mb-4">
           <h2 className="font-semibold text-gray-800">Outbound Order Flow</h2>
@@ -838,10 +807,11 @@ function UseCaseExplorer() {
           <span className="text-xs text-gray-400">Customer orders leaving warehouse</span>
         </div>
         <div className="space-y-2">
-          {outbound.map(uc => <UCCard key={uc.id} uc={uc} expandedUC={expandedUC} setExpandedUC={setExpandedUC} />)}
+          {outbound.map(uc => <UCCard key={uc.id} uc={uc} />)}
         </div>
       </section>
 
+      {/* Inbound section */}
       <section>
         <div className="flex items-center gap-3 mb-4">
           <h2 className="font-semibold text-gray-800">Inbound Order Flow</h2>
@@ -849,7 +819,7 @@ function UseCaseExplorer() {
           <span className="text-xs text-gray-400">Goods arriving at warehouse</span>
         </div>
         <div className="space-y-2">
-          {inbound.map(uc => <UCCard key={uc.id} uc={uc} expandedUC={expandedUC} setExpandedUC={setExpandedUC} />)}
+          {inbound.map(uc => <UCCard key={uc.id} uc={uc} />)}
         </div>
       </section>
     </div>
@@ -922,62 +892,33 @@ const OUTBOUND_COLS = [
   { key: 'OutForDelivery',     label: 'Dispatched',   top: 'border-t-purple-400'  },
   { key: 'Delivering',         label: 'Delivering',   top: 'border-t-purple-500'  },
   { key: 'Delivered',          label: 'Delivered',    top: 'border-t-green-400'   },
-  { key: 'Collected',          label: 'Collected',    top: 'border-t-teal-500'    },
-  { key: 'Invoiced',           label: 'Invoiced',     top: 'border-t-green-500'   },
-  { key: 'OnHold',             label: 'On Hold',      top: 'border-t-red-500',    exception: true },
   { key: 'Paid',               label: 'Paid',         top: 'border-t-emerald-500' },
-  { key: 'Cancelled',          label: 'Cancelled',    top: 'border-t-red-400',    closed: true    },
-  { key: 'Returned',           label: 'Returned',     top: 'border-t-rose-400',   closed: true    },
+  { key: 'OnHold',             label: 'On Hold',      top: 'border-t-amber-400'   },
+  { key: 'Cancelled',          label: 'Cancelled',    top: 'border-t-red-400'     },
+  { key: 'Returned',           label: 'Returned',     top: 'border-t-rose-400'    },
 ];
 
 const PO_STATUSES = ['Created', 'PartiallyReceived', 'FullyReceived', 'Closed'];
 const TO_STATUSES = ['Created', 'PickConfirmed', 'InTransit', 'Received', 'Completed'];
 
 function OrderCard({ order, onClick }) {
-  const urg     = orderUrgency(order);
-  const slot    = order.deliverySlot;
-  const slotUrg = slotUrgency(slot);
-  const borderCls = urg === 'critical'
-    ? 'border-red-300 bg-red-50 hover:border-red-400'
-    : urg === 'warning'
-    ? 'border-amber-300 bg-amber-50 hover:border-amber-400'
-    : 'border-gray-200 bg-white hover:border-blue-300';
   return (
     <button
       onClick={() => onClick(order)}
-      className={`w-full text-left border rounded-xl p-3 mb-2 hover:shadow-md transition-all cursor-pointer ${borderCls}`}>
+      className="w-full text-left bg-white border border-gray-200 rounded-xl p-3 mb-2 hover:shadow-md hover:border-blue-300 transition-all cursor-pointer">
       <div className="flex items-center justify-between mb-1 gap-1">
         <span className="font-mono text-xs font-bold text-gray-700 truncate">{order.id}</span>
         <Badge text={order.type} cls={`${TYPE_BADGE[order.type] || 'bg-gray-100 text-gray-700'} shrink-0`} />
       </div>
       <div className="text-sm font-medium text-gray-800 truncate">{order.customer}</div>
-      <div className="flex items-center justify-between mt-1">
+      <div className="flex items-center justify-between mt-1.5">
         <span className="text-xs text-gray-400">{order.items} items · {order.store}</span>
-        <span className="text-xs font-bold text-gray-700">฿{order.amount?.toLocaleString()}</span>
+        <span className="text-xs font-bold text-gray-700">₿{order.amount?.toLocaleString()}</span>
       </div>
-      {order.orderDate && (
-        <div className="text-xs text-gray-400 mt-1">{fmtOrderTime(order.orderDate)}</div>
-      )}
-      {slot && (
-        <div className={`mt-1.5 text-xs font-medium flex items-center gap-1
-          ${slotUrg === 'overdue' ? 'text-red-600'
-          : slotUrg === 'active'  ? 'text-orange-600'
-          : slotUrg === 'soon'    ? 'text-amber-600'
-          :                         'text-blue-500'}`}>
-          <span>{slotUrg === 'overdue' ? '⚠' : slotUrg === 'active' ? '⏱' : '🕐'}</span>
-          <span>
-            {new Date(slot.scheduledStart).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false})}–{new Date(slot.scheduledEnd).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false})}
-            {slotUrg === 'overdue' ? ' · Late' : slotUrg === 'active' ? ' · Active' : slotUrg === 'soon' ? ' · Soon' : ''}
-          </span>
-        </div>
-      )}
       {order.holdReason && (
-        <div className="mt-1 text-xs text-red-700 font-semibold flex items-center gap-1">
-          <span>🚨</span><span>{order.holdReason}</span>
+        <div className="mt-1.5 text-xs text-amber-700 font-medium flex items-center gap-1">
+          <span>⚠</span><span>{order.holdReason}</span>
         </div>
-      )}
-      {order.posRecalcPending && (
-        <div className="mt-1 text-xs text-amber-700 font-medium">⚠ Recalc Pending</div>
       )}
     </button>
   );
@@ -992,7 +933,7 @@ function POCard({ po }) {
       </div>
       <div className="text-sm font-medium text-gray-800 truncate">{po.supplier}</div>
       <div className="text-xs text-gray-400 mt-1">{po.store} · {po.lines} lines</div>
-      <div className="text-xs font-bold text-gray-700 mt-0.5">฿{po.value?.toLocaleString()}</div>
+      <div className="text-xs font-bold text-gray-700 mt-0.5">₿{po.value?.toLocaleString()}</div>
     </div>
   );
 }
@@ -1027,89 +968,12 @@ function ReturnCard({ ret }) {
   );
 }
 
-function KPISummary({ orders }) {
-  const active    = orders.filter(o => !['Paid','Cancelled','Returned'].includes(o.status));
-  const attention = orders.filter(o => orderUrgency(o) !== null);
-  const onHold    = orders.filter(o => o.status === 'OnHold');
-  const paidRev   = orders.filter(o => o.status === 'Paid').reduce((s, o) => s + (o.amount || 0), 0);
-  const kpis = [
-    { label: 'Active Orders',   value: active.length,               sub: `of ${orders.length} total`,                              color: 'blue'    },
-    { label: 'Needs Attention', value: attention.length,             sub: 'hold · late · recalc',                                   color: attention.length > 0 ? 'red' : 'gray' },
-    { label: 'On Hold',         value: onHold.length,                sub: onHold.map(o => o.id).join(', ') || 'none',               color: onHold.length > 0 ? 'amber' : 'gray' },
-    { label: 'Paid Revenue',    value: `฿${paidRev.toLocaleString()}`, sub: `${orders.filter(o => o.status === 'Paid').length} orders paid`, color: 'emerald' },
-  ];
-  const C = {
-    blue:    { bg: 'bg-blue-50',    bd: 'border-blue-200',    val: 'text-blue-700',    sub: 'text-blue-500'    },
-    red:     { bg: 'bg-red-50',     bd: 'border-red-200',     val: 'text-red-700',     sub: 'text-red-500'     },
-    amber:   { bg: 'bg-amber-50',   bd: 'border-amber-200',   val: 'text-amber-700',   sub: 'text-amber-500'   },
-    emerald: { bg: 'bg-emerald-50', bd: 'border-emerald-200', val: 'text-emerald-700', sub: 'text-emerald-500' },
-    gray:    { bg: 'bg-gray-50',    bd: 'border-gray-200',    val: 'text-gray-600',    sub: 'text-gray-400'    },
-  };
-  return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-      {kpis.map(k => {
-        const c = C[k.color];
-        return (
-          <div key={k.label} className={`${c.bg} border ${c.bd} rounded-xl px-4 py-3`}>
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{k.label}</div>
-            <div className={`text-2xl font-black ${c.val}`}>{k.value}</div>
-            <div className={`text-xs mt-0.5 truncate ${c.sub}`}>{k.sub}</div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function AttentionBanner({ orders }) {
-  const flagged = orders
-    .filter(o => orderUrgency(o) !== null)
-    .sort((a, b) => (orderUrgency(a) === 'critical' ? -1 : 1));
-  if (flagged.length === 0) return null;
-  return (
-    <div className="mb-4 border border-red-200 rounded-xl p-3 bg-red-50">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-sm font-bold text-red-700">Needs Attention</span>
-        <span className="text-xs text-red-600 bg-red-100 border border-red-200 rounded-full px-2 py-0.5 font-semibold">{flagged.length}</span>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {flagged.map(o => {
-          const urg = orderUrgency(o);
-          const reason = o.holdReason
-            ? o.holdReason
-            : o.posRecalcPending
-            ? 'Recalc Pending'
-            : slotUrgency(o.deliverySlot) === 'overdue'
-            ? 'Slot Overdue'
-            : 'Slot Active';
-          return (
-            <div key={o.id} className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border
-              ${urg === 'critical' ? 'bg-red-100 border-red-300 text-red-800' : 'bg-amber-100 border-amber-300 text-amber-800'}`}>
-              <span>{urg === 'critical' ? '🚨' : '⚠'}</span>
-              <span className="font-mono font-bold">{o.id}</span>
-              <span>·</span>
-              <span>{reason}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function KanbanCol({ col, cards, onCardClick }) {
-  const bgCls    = col.exception ? 'bg-red-50'   : 'bg-gray-50';
-  const countCls = col.exception
-    ? 'bg-red-100 border-red-200 text-red-700'
-    : 'bg-white border-gray-200 text-gray-500';
-  const lblCls   = col.exception ? 'text-red-600' : 'text-gray-500';
   return (
-    <div className={`kanban-col ${bgCls} rounded-xl border-t-4 ${col.top} border border-gray-200 p-3 flex flex-col`}>
+    <div className={`kanban-col bg-gray-50 rounded-xl border-t-4 ${col.top} border border-gray-200 p-3 flex flex-col`}>
       <div className="flex items-center justify-between mb-3 shrink-0">
-        <span className={`text-xs font-bold uppercase tracking-wider truncate ${lblCls}`}>
-          {col.exception && '⚠ '}{col.label}
-        </span>
-        <span className={`ml-1 border text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold shrink-0 ${countCls}`}>
+        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider truncate">{col.label}</span>
+        <span className="ml-1 bg-white border border-gray-200 text-gray-500 text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium shrink-0">
           {cards.length}
         </span>
       </div>
@@ -1156,77 +1020,39 @@ function InboundMiniKanban({ title, badge, statuses, items, renderCard, borderCo
 
 function KanbanBoard({ onOrderClick }) {
   const { orders, purchaseOrders, transferOrders, returns } = React.useContext(DataContext);
-  const [tab, setTab]                   = useState('outbound');
-  const [showClosed, setShowClosed]     = useState(false);
-  const [selectedStore, setSelectedStore] = useState('All');
-
-  const stores = React.useMemo(
-    () => ['All', ...[...new Set(orders.map(o => o.store))].sort()],
-    [orders]
-  );
-
-  const filteredOrders = selectedStore === 'All'
-    ? orders
-    : orders.filter(o => o.store === selectedStore);
-
-  const visibleCols = showClosed
-    ? OUTBOUND_COLS
-    : OUTBOUND_COLS.filter(c => !c.closed);
-
+  const [tab, setTab] = useState('outbound');
   const grouped = OUTBOUND_COLS.reduce((acc, col) => {
-    acc[col.key] = filteredOrders.filter(o => o.status === col.key);
+    acc[col.key] = orders.filter(o => o.status === col.key);
     return acc;
   }, {});
 
-  const closedCount = filteredOrders.filter(o => {
-    const col = OUTBOUND_COLS.find(c => c.key === o.status);
-    return col && col.closed;
-  }).length;
+  const totalActive = orders.filter(o => !['Paid', 'Cancelled', 'Returned'].includes(o.status)).length;
 
   return (
     <div className="p-4 pb-16">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Order Board</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Simulated: Jan 15, 2024 · 16:00 · click any card for details</p>
+          <p className="text-xs text-gray-400 mt-0.5">{totalActive} active orders · click any card for order details</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <select
-            value={selectedStore}
-            onChange={e => setSelectedStore(e.target.value)}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:border-blue-400">
-            {stores.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-            {[['outbound', 'Outbound'], ['inbound', 'Inbound']].map(([key, label]) => (
-              <button key={key} onClick={() => setTab(key)}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${tab === key ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
-                {label}
-              </button>
-            ))}
-          </div>
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+          {[['outbound', 'Outbound Orders'], ['inbound', 'Inbound (PO / Transfer / Returns)']].map(([key, label]) => (
+            <button key={key} onClick={() => setTab(key)}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${tab === key ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
       {tab === 'outbound' && (
-        <>
-          <KPISummary orders={filteredOrders} />
-          <AttentionBanner orders={filteredOrders} />
-          <div className="flex items-center justify-end mb-3">
-            <button
-              onClick={() => setShowClosed(v => !v)}
-              className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 px-3 py-1.5 rounded-lg bg-white transition-colors">
-              {showClosed ? '▼ Hide Closed' : `▶ Show Closed (${closedCount})`}
-            </button>
+        <div className="kanban-scroll">
+          <div className="flex gap-3" style={{ minWidth: 'max-content' }}>
+            {OUTBOUND_COLS.map(col => (
+              <KanbanCol key={col.key} col={col} cards={grouped[col.key] || []} onCardClick={onOrderClick} />
+            ))}
           </div>
-          <div className="kanban-scroll">
-            <div className="flex gap-3" style={{ minWidth: 'max-content' }}>
-              {visibleCols.map(col => (
-                <KanbanCol key={col.key} col={col} cards={grouped[col.key] || []} onCardClick={onOrderClick} />
-              ))}
-            </div>
-          </div>
-        </>
+        </div>
       )}
 
       {tab === 'inbound' && (
@@ -1704,7 +1530,7 @@ function StockFlowCase1() {
           <span className="font-mono font-bold text-lg text-gray-900">{sku}</span>
           <span className="text-gray-400">—</span>
           <span className="text-gray-700">{skuName}</span>
-          <span className="ml-2 text-xs bg-gray-100 text-gray-600 border border-gray-200 px-2 py-0.5 rounded font-mono">฿{unitPrice}/unit</span>
+          <span className="ml-2 text-xs bg-gray-100 text-gray-600 border border-gray-200 px-2 py-0.5 rounded font-mono">₿{unitPrice}/unit</span>
         </div>
         <p className="text-sm text-gray-500">
           Scenario: 1 Purchase Order delivers {total} units → {ordersWithColors.length} customers consume {total - remaining} → {remaining} remains in WMS
@@ -2055,7 +1881,7 @@ function StockFlowCase3() {
                     <div className="text-xs text-gray-400">{s.substituteProductName}</div>
                   </td>
                   <td className="py-3 px-3 text-right font-mono font-bold text-amber-700">{s.substituteQty}</td>
-                  <td className="py-3 px-3 text-right font-mono text-xs text-gray-600">฿{s.substituteUnitPrice}</td>
+                  <td className="py-3 px-3 text-right font-mono text-xs text-gray-600">₿{s.substituteUnitPrice}</td>
                   <td className="py-3 px-3 text-center">
                     {s.customerApproved
                       ? <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">✓ Yes</span>
@@ -2192,7 +2018,7 @@ function StockFlowCase4() {
             { time: ret.receivedAt,  label: 'Received',   dot: 'bg-orange-400',  desc: 'Warehouse dock checks in package' },
             { time: ret.inspectedAt, label: 'Inspected',  dot: 'bg-amber-400',   desc: 'Staff assigns condition per item' },
             { time: ret.putAwayAt,   label: 'Put Away',   dot: 'bg-emerald-500', desc: 'Resellable shelved; Dispose written off' },
-            { time: refund.processedAt, label: 'Refunded', dot: 'bg-green-500',  desc: `฿${refund.refundAmount} → ${refund.method}` },
+            { time: refund.processedAt, label: 'Refunded', dot: 'bg-green-500',  desc: `₿${refund.refundAmount} → ${refund.method}` },
           ].map((step, i, arr) => (
             <React.Fragment key={step.label}>
               <div className="flex flex-col items-center shrink-0" style={{ minWidth: 80 }}>
@@ -2228,7 +2054,7 @@ function StockFlowCase4() {
               </div>
               <div className="flex-1 bg-white rounded-lg border border-blue-200 p-2 text-center">
                 <div className="text-xs text-gray-500 mt-1">{originalOrder.deliveredAt}</div>
-                <div className="text-xs font-mono text-blue-600">฿{unitPrice * originalOrder.qty}</div>
+                <div className="text-xs font-mono text-blue-600">₿{unitPrice * originalOrder.qty}</div>
               </div>
             </div>
           </div>
@@ -2394,7 +2220,7 @@ function StockFlowCase4() {
               {[
                 ['refund_id',    refund.id,                            'font-mono text-gray-700'],
                 ['return_id',    ret.id,                               'font-mono text-teal-700 font-bold'],
-                ['refund_amount',`฿${refund.refundAmount}`,            'font-mono text-emerald-700 font-bold text-lg'],
+                ['refund_amount',`₿${refund.refundAmount}`,            'font-mono text-emerald-700 font-bold text-lg'],
                 ['currency',     refund.currency,                      'font-mono text-gray-600'],
                 ['refund_method',refund.method,                        'font-mono text-blue-700'],
                 ['status',       refund.status,                        'font-mono font-bold text-emerald-700'],
@@ -2418,7 +2244,7 @@ function StockFlowCase4() {
               {[
                 ['credit_note_number', refund.creditNoteNumber,   'font-mono text-violet-700 font-bold'],
                 ['order_id',          originalOrder.id,           'font-mono text-blue-700'],
-                ['amount',            `฿${refund.refundAmount}`,  'font-mono text-emerald-700 font-bold text-lg'],
+                ['amount',            `₿${refund.refundAmount}`,  'font-mono text-emerald-700 font-bold text-lg'],
                 ['currency',          refund.currency,            'font-mono text-gray-600'],
                 ['reason',            refund.reason,              'font-mono text-violet-700'],
                 ['source',            'ReturnRequest',            'font-mono text-gray-600'],
@@ -2547,7 +2373,7 @@ function StockFlowView() {
 // ─────────────────────────────────────────────────────────────
 
 const NAV_TABS = [
-  { key: 'kanban',    label: 'Orders'         },
+  { key: 'kanban',    label: 'Kanban Board'   },
   { key: 'usecases',  label: 'Use Cases'      },
   { key: 'stockflow', label: 'Stock Flow'     },
   { key: 'apiref',    label: 'API Reference'  },

@@ -126,6 +126,7 @@ erDiagram
         decimal substitute_unit_price
         decimal substituted_amount
         bool customer_approved
+        timestamptz approved_at
         timestamptz created_at
     }
 
