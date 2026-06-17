@@ -86,6 +86,13 @@ Each agent has an isolated persistent memory directory:
 
 Memory files use YAML frontmatter (`name`, `description`, `type`) and each agent maintains a `MEMORY.md` index. Memory scope is project-level (shared via version control). Memory types: `user`, `feedback`, `project`, `reference`.
 
+## .NET Coding Standards
+
+These apply to all .NET code written in this repository, by any agent or session:
+
+- **Do not use MediatR** — not open source. Replace with plain service interfaces injected via ASP.NET Core DI.
+- **Do not use AutoMapper** — not open source. Replace with explicit manual mapping methods.
+
 ## Lens Pool
 
 `lens-determiner` selects 2 contrasting lenses per problem from: Event-Driven Architecture, CQRS, Hexagonal Architecture, Microservices, Domain-Driven Design, Serverless, Saga Pattern, Strangler Fig, Layered Architecture, Service Mesh, and others. Architect instances are forbidden from drifting outside their assigned lens.

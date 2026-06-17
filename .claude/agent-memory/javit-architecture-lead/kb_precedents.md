@@ -155,3 +155,15 @@ worker operational issue; any Kubernetes deployment topology for stateful backgr
 **Trigger:** Any Airflow DAG using TriggerDagRunOperator where downstream tasks show "no status" or child DAGs fail silently.
 
 **KB:** P012, D017, S017
+
+---
+
+## D021 — RabbitMQ Consumer in .NET 8 API Standard
+
+**Established:** When adding a RabbitMQ consumer to an existing .NET 8 Web API (single deployable): use IHostedService (BackgroundService) as the inbound Hexagonal adapter, RabbitMQ.Client (not MassTransit) as the low-level package, IServiceScopeFactory.CreateScope() per message (DbContext scope safety), IActivityLogService as application port, IActivityLogRepository as driven port. EDA lens contributions absorbed: unique partial index on TransactionID (idempotency), BasicNack(requeue:false) → DLX, BasicQos(prefetchCount:1) backpressure.
+
+**MassTransit rejection criteria:** existing producers use raw JSON (no MT envelope) + single-queue + insert-only use case → RabbitMQ.Client wins on simplicity.
+
+**Trigger:** Any problem adding a message consumer to an existing .NET API without a separate worker process; any BackgroundService that calls Scoped DI services; any RabbitMQ consumer package selection question.
+
+**KB:** P016, D021, S021

@@ -157,3 +157,17 @@ If kb-search-agent returns a result with overlap_score ≥ 0.8, instruct lens-de
 3. Pass `kb_influence: "refinement"` in the lens output (not `"contrast"`)
 
 This prevents re-selecting the same lenses for nearly-identical problems, encouraging KB growth with nuanced variations.
+
+---
+
+## RabbitMQ Consumer / Message Ingestion Problems
+
+**Tags:** `dotnet`, `rabbitmq`, `ef-core`, `postgresql`, `background-service`, `hosted-service`, `message-consumer`
+
+**Lens pair:** Hexagonal Architecture vs Event-Driven Architecture
+
+**Contrast rationale:** Hexagonal asks "how do we structure the code layers?" — yields adapter isolation, testability, clean port boundaries. Event-Driven asks "how do we handle the message flow reliably?" — yields at-least-once semantics, idempotency, DLQ routing, backpressure. Neither alone is sufficient: Hexagonal without EDA misses operational safety; EDA without Hexagonal produces a tangled consumer.
+
+**Outcome (P016 / D021):** Hexagonal wins as primary organizing principle; EDA lens contributed three absorbed improvements (idempotency, DLQ, backpressure). Rule crystallized: for single-queue, single-consumer, insert-only use cases — RabbitMQ.Client over MassTransit when producers use raw JSON.
+
+**First used:** P016 / D021 — confirmed as high-quality contrast for RabbitMQ consumer integration on existing .NET APIs.
