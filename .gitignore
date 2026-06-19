@@ -3,3 +3,4 @@ sync/.env
 sync/notion_kb_hashes.json
 **/bin
 **/obj
+.claude/settings.local.json

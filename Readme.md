@@ -34,3 +34,5 @@ flowchart TD
       KB2 -.->|"on demand"| NS
       NS -.-> Notion[("🗃️  Notion\n3 linked DBs")]
 ```
+
+> "Process inbox/my-problem.md"
