@@ -171,3 +171,54 @@ This prevents re-selecting the same lenses for nearly-identical problems, encour
 **Outcome (P016 / D021):** Hexagonal wins as primary organizing principle; EDA lens contributed three absorbed improvements (idempotency, DLQ, backpressure). Rule crystallized: for single-queue, single-consumer, insert-only use cases — RabbitMQ.Client over MassTransit when producers use raw JSON.
 
 **First used:** P016 / D021 — confirmed as high-quality contrast for RabbitMQ consumer integration on existing .NET APIs.
+
+---
+
+## Adapter-Layer Correctness / Priority Logic Problems
+
+**Tags:** `dotnet`, `correctness`, `adapter`, `null-safety`, `priority-logic`, `unit-testing`
+
+**Lens pair:** Hexagonal Architecture vs Layered Architecture
+
+**Contrast rationale:** Hexagonal asks "should the resolution rule be a named port (interface) testable in isolation?" — reveals whether extraction creates reuse or just overhead. Layered asks "can a private helper method in the same class serve as the contract?" — reveals whether the rule is truly adapter-internal or cross-cutting.
+
+**Outcome (P017 / D022):** Layered wins for single-adapter, single-caller, brownfield context. Hexagonal lens contributed: explicit priority tier naming and null guard discipline. Rule crystallized: extract to an interface only when 2+ callers exist or when the rule must be swappable at runtime. Private helper + named priority comments is the correct pattern for isolated adapter resolution chains.
+
+**First used:** P017 / D022 — confirmed as high-quality contrast for adapter correctness / priority resolution problems.
+
+---
+
+## OMS Service-Boundary-Fix + Cross-Cutting-Layer Proposal Review
+
+**Tags:** `oms`, `microservices`, `service-boundary-violation`, `api-gateway`, `bff`,
+`observability`, `read-model`, `dotnet`
+
+**Lens pair:** Microservices vs Strangler Fig
+
+**Contrast rationale:** Microservices asks "what should the target service boundary look like once
+Order/Master/Portal are truly network-decoupled, with Gateway+BFF+broker fan-out as first-class
+citizens?" Strangler Fig asks "given production traffic already flows through the coupled
+Order.API today, how do we incrementally introduce the Gateway/BFF/observability facade and peel
+off project-references one seam at a time without a risky big-bang rewrite?" The tension is
+target-state design vs safe incremental migration sequencing -- both matter for a proposal-review
+of a live production system (not greenfield).
+
+**Outcome (P018/D023):** Strangler Fig wins as the sequencing strategy; Microservices lens's
+target-state components (Gateway, BFF, OTel, broker-relayed Outbox, read-model) and its concrete
+HTTP-adapter code pattern (typed HttpClient + Polly + traceparent) are both absorbed into each
+strangled seam. Rule crystallized: for a system with an existing Modular Monolith precedent (D020)
+and unresolved traffic/team/multi-tenancy open questions, do not let a proposal review commit to
+full microservices in one step -- sequence via Strangler Fig and re-evaluate the end-state once
+data exists.
+
+**Note on lens reuse:** deliberately avoided reusing the Modular Monolith vs Microservices pair
+from P015/D020 even though this is the same OMS lineage, since KB overlap was low (0.111, well
+below the 0.8 dedup/reuse-avoidance threshold) and a facade/migration-sequencing question is a
+genuinely different tension than an internal module-boundary confirmation question. Reserve
+Modular Monolith vs Microservices for full internal-boundary confirmation problems; use
+Microservices vs Strangler Fig for "how do we safely get from coupled-today to decoupled-target"
+sequencing problems.
+
+**First used:** P018/D023 -- new lens pair for this domain, confirmed as high-quality contrast for
+proposal-review consultations on brownfield service-boundary fixes with layered cross-cutting
+concerns (gateway/BFF/observability/read-model) riding on top.

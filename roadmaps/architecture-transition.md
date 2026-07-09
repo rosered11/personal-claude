@@ -1,19 +1,20 @@
 # Architecture Transition Roadmap
 **Goal:** Backend Developer → Software Architecture Specialist
 **Current Phase:** Foundation
-**Last Updated:** 2026-04-28
-**Consultation Count:** 3
+**Last Updated:** 2026-07-09
+**Consultation Count:** 5
 
 ---
 
 ## Current Focus
-Build foundational pattern literacy and systems thinking by working through real architecture problems with the team. Each consultation is a learning opportunity — the goal right now is exposure breadth across the core architectural domains.
+Foundational pattern literacy is broadening well (5 consultations, 4+ domains touched: EF Core/ETL performance, Airflow orchestration, adapter correctness, and now three OMS system-design passes). The natural next step is migration strategy and brownfield sequencing — P018/D023 was the first consultation about *how to safely evolve* an already-deployed system rather than *how to design one from scratch* or *confirm an existing design*. Start paying deliberate attention to Strangler Fig, feature-flagged seams, and "defer the big decision until data exists" reasoning — this is a distinctly senior-architect skill (comfort with incremental, reversible steps under uncertainty) that shows up constantly in brownfield consulting.
 
 ## Skill Domains
 
 ### Distributed Systems
 - [ ] CAP theorem and consistency models — foundational for every distributed design decision
 - [ ] Failure modes: partial failures, network partitions, cascading failures
+- [x] In-process coupling vs real network boundary — **encountered in D023 (Order.API project-referenced Master/Portal despite separate deploy pipelines; "independently deployable" does not equal "decoupled" unless the call path is actually swapped from assembly reference to HTTP/gRPC)**
 - [x] Idempotency and exactly-once semantics — encountered in D018 (CreateOrderHandler idempotency check); reinforced in D020 (ACL adapter idempotency key on outbox worker retry)
 - [ ] Backpressure and flow control
 - [x] Single-writer enforcement — encountered in D020 (FOR UPDATE SKIP LOCKED for outbox worker; Kubernetes single-replica deployment constraint)
@@ -27,13 +28,13 @@ Build foundational pattern literacy and systems thinking by working through real
 ### System Design Fundamentals
 - [ ] Load balancing strategies and tradeoffs
 - [ ] Caching layers: CDN, application, database
-- [ ] API gateway patterns
+- [x] API gateway patterns — **encountered in D023 (YARP Gateway + channel-based BFFs proposed as the facade layer in a Strangler Fig migration; the gateway ships before any internal boundary rewrite, not after)**
 - [ ] Service discovery and health checking
 
 ### Architectural Patterns (Structural)
-- [ ] Hexagonal Architecture (Ports & Adapters)
+- [x] Hexagonal Architecture (Ports & Adapters) — **evaluated in D022 (FMSUpdateAdapter); rejected for a single-adapter fix in favor of Layered private helper, but the port/adapter framing was used to diagnose the correctness boundary**
 - [x] Saga Pattern — distributed transaction coordination — **evaluated in D019 (Returns flow); rejected for 2-service case in favor of outbox+ACL; understand when Saga is warranted (3+ services) vs overkill**
-- [ ] Strangler Fig — incremental legacy migration
+- [x] Strangler Fig — incremental legacy migration — **encountered in D023 (facade-first: ship Gateway/BFF/OTel in front of the coupled Order.API immediately, then strangle Order-to-Master/Portal project references one seam at a time via a feature-flagged legacy-vs-HTTP port, instead of a big-bang network-boundary rewrite)**
 - [x] Domain-Driven Design: bounded contexts, aggregates, ubiquitous language — **encountered in D018 (Order aggregate root, state machine, Anti-Corruption Layers, RolloutPolicy domain service) and D019 (Package value object, PreHoldState snapshot, Returns sub-machine invariants)**
 - [x] Modular Monolith — module boundary enforcement, schema isolation, future service extraction path — **encountered in D020 (4-module OMS: Order/Payment/Returns/Configuration with separate PostgreSQL schemas, ID-only cross-module access, ACL adapters as boundary contracts)**
 
@@ -91,6 +92,18 @@ Build foundational pattern literacy and systems thinking by working through real
 | ACL adapter per integration — encapsulating external contract volatility (WMS/TMS/POS/STS/LegacyBackend) | 2026-04-28 | P015/D020/S020 | Architectural Patterns | Medium |
 | Security layering — JWT per channel + HMAC per integration + Vault for secrets | 2026-04-28 | P015/D020 | System Design Fundamentals | Medium |
 | Dead-letter queue for outbox — DLQ table + alerting on DLQ depth for operational safety | 2026-04-28 | P015/D020/S020 | Event-Driven Architecture | Medium |
+
+| Priority chain resolution pattern — explicit 3-tier fallback with null guards | 2026-06-22 | P017/D022/S022 | Architectural Patterns | Medium |
+| Hexagonal vs Layered tradeoff — when to extract a port vs refine in-place | 2026-06-22 | P017/D022 | Architectural Patterns | Medium |
+| Adapter-layer correctness — branch asymmetry as a silent-failure risk in adapters | 2026-06-22 | P017/D022 | System Design Fundamentals | High |
+| Test subclassing pattern — TestableFMSAdapter to expose private methods for unit testing | 2026-06-22 | P017/S022 | System Design Fundamentals | Medium |
+
+| In-process coupling vs real network boundary — "independently deployable" != "decoupled" | 2026-07-09 | P018/D023 | Distributed Systems | High |
+| API Gateway pattern — YARP as facade for AuthN/AuthZ, rate limiting, routing to BFFs | 2026-07-09 | P018/D023/S023 | System Design Fundamentals | High |
+| BFF (Backend-for-Frontend) — organizing by channel, not by BU, to avoid combinatorial service growth | 2026-07-09 | P018/D023 | System Design Fundamentals | High |
+| Strangler Fig — facade-first sequencing, per-seam feature-flagged legacy vs target adapter | 2026-07-09 | P018/D023/S023 | Architectural Patterns | High |
+| Deferring a binary architecture decision pending real data — re-checking a prior precedent's (D020) rejection criteria instead of assuming they still hold | 2026-07-09 | P018/D023 | Organizational & Communication Skills | High |
+| OpenTelemetry as the unifying tracing/metrics/logging layer (W3C traceparent across Gateway -> BFF -> domain services) | 2026-07-09 | P018/D023 | Distributed Systems | Medium |
 
 ---
 
@@ -241,6 +254,102 @@ is the .NET pattern for receiving SIGTERM and exiting cleanly.
   `BackgroundService` and `IHostedService` shutdown documentation
 - Practice: Deploy the OutboxWorker from S020 to a local k3d cluster and observe the
   graceful shutdown sequence using `kubectl logs`.
+
+---
+
+
+### Consultation: FMSUpdateAdapter ShipmentProvider Priority Fix (2026-06-22) — KB: P017 / D022 / S022
+
+This consultation was a targeted correctness fix, not a greenfield design problem — but it surfaced
+two architectural concepts worth internalizing. Here is what to study:
+
+**1. When NOT to Extract a Port (Hexagonal vs Layered Trade-Off)**
+The Hexagonal lens proposed an `IShipmentProviderResolver` interface. The Layered lens proposed a
+private helper method. Both achieve the same correctness outcome. The key insight: interface
+extraction is appropriate when (a) multiple callers need the rule, or (b) the rule must be swappable
+at runtime. When neither applies — single adapter, stable rule — the interface adds DI registration
+overhead for zero benefit. Learn to ask "who else will call this?" before creating a new abstraction.
+- Study: "Simple Made Easy" (Rich Hickey); the YAGNI principle applied to abstraction layers
+- Practice: For each interface in your codebase with only one implementation, ask: is this port
+  protecting against external volatility, or is it accidental complexity?
+
+**2. Priority Chain Resolution as a Named Pattern**
+The `ResolveShipmentProvider` method implements a specific pattern: ordered fallback resolution
+with null guards at each tier. This pattern appears in many domains:
+- Carrier resolution (this problem)
+- Price resolution (price list > segment price > base price)
+- Locale resolution (user preference > account locale > system default)
+The key structural rule: each tier is evaluated independently with an IsNullOrWhiteSpace guard.
+Merging two tiers into a single variable (like the original `thirdPartyLogistic`) destroys the
+ability to override at the individual tier level. Named private helper + comments = self-documenting
+contract that enforces the business rule visibly.
+- Practice: Find one other place in the Activity Process Service codebase where two data sources
+  are merged prematurely. Refactor using the same 3-tier pattern.
+
+**3. Branch Asymmetry as a Hidden Correctness Risk**
+The weighted-item and normal-item branches had asymmetric package handling — the weighted branch
+lacked a null guard, the normal branch handled null correctly. This is a class of bug that is easy
+to introduce when copy-pasting and modifying one branch without updating the other. The fix:
+unify both branches to call a single shared helper. Any future change to the resolution rule only
+touches one method. This also eliminates the "clone verification" risk recorded in D006.
+- Study: P006 (D006) — copy-paste silent-failure; the DRY principle applied to adapter branching
+
+
+---
+
+### Consultation: OMS Service-Boundary Review (2026-07-09) -- KB: P018 / D023 / S023
+
+This was your first *proposal-review* consultation rather than a greenfield design or incident --
+you were handed an already-researched architecture review and asked to weigh in as the specialist.
+That is a distinct skill from the earlier OMS consultations: you are validating/adjusting someone
+else's reasoning, not producing the first draft. Here is what to study:
+
+**1. "Independently Deployable" Is Not the Same As "Decoupled"**
+Order.API, Master.API, and Portal.API ship on separate pipelines but Order.API still holds a
+compile-time project reference into Master and Portal. This is the single most important
+architectural smell in the whole review: deploy independence gives you nothing if a change to
+Master's internals still forces an Order.API rebuild. The fix pattern -- keep the existing
+IHandler-style port, but swap the *implementation* from an in-process call to an HTTP/gRPC call --
+is the same seam-based technique you will see again and again in brownfield work.
+- Study: Sam Newman, "Monolith to Microservices" (ch. 2-3, on identifying and cutting seams)
+- Practice: In S023, trace how IMasterServiceClient lets Order.API code stay unaware of whether
+  the call is in-process or over HTTP. Could you retrofit this pattern onto a coupled pair of
+  modules in your own codebase?
+
+**2. Strangler Fig vs "Big Bang" -- Choosing a Migration Strategy, Not Just an End State**
+Both architect lenses agreed on the *target* architecture (Gateway, BFF, OpenTelemetry, broker-fed
+read-model). The real decision was about *sequencing*: cut over all three services' boundaries at
+once (Microservices lens), or ship the highest-value, lowest-risk pieces first and strangle the
+coupling one seam at a time (Strangler Fig lens, which won). This is a pattern you will need
+constantly once you are advising on live production systems rather than greenfield ones -- the
+"right" end state is often not the hard part; the safe path to it is.
+- Study: Martin Fowler, "StranglerFigApplication" (martinfowler.com); the microservices.io
+  decomposition patterns
+- Practice: Identify one coupled pair in a system you own. Sketch the legacy-vs-target adapter
+  seam (like S023) and decide which single call-site you would strangle first, and why.
+
+**3. Reconciling With a Prior Decision Instead of Silently Re-Deciding**
+D020 (an earlier consultation on this same OMS) already established Modular Monolith over
+Microservices under specific conditions (small team, atomic-TX need, no broker, sub-inflection-point
+volume). This new proposal implies those conditions might no longer hold (services are already
+split, a broker is being discussed) -- but the traffic/team data to actually confirm that shift
+does not exist yet. The disciplined move was not to silently override D020, and not to blindly
+re-apply it either, but to explicitly defer the binary choice until the missing data exists. This
+is what "treating your knowledge base as institutional memory" looks like in practice.
+- Study: How to write an ADR that supersedes vs extends a prior ADR (e.g., the "Superseded by"
+  convention in Michael Nygard's original ADR post)
+- Practice: Next time you revisit a past decision, explicitly write one sentence stating whether
+  you are confirming it, extending it, or challenging it -- and why.
+
+**4. BFF Organized By Channel, Not By Tenant/BU**
+The review's own recommendation -- start with channel-based BFFs (Web-Admin, Marketplace, Mobile)
+carrying BU/tenant context via JWT claim, rather than one BFF per BU -- is a good instinct to
+internalize: avoid combinatorial service growth by defaulting to the coarsest split that still
+works, and only fragment further when a specific consumer's release cadence or scaling profile
+genuinely diverges.
+- Study: Sam Newman's BFF pattern writeup; "Building Microservices" ch. 4 on decomposition axes
+- Practice: For a multi-tenant system you know, would channel-based or tenant-based BFF splitting
+  serve better -- and what evidence would change your answer?
 
 ---
 

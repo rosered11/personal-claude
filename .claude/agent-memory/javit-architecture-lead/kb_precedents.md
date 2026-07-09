@@ -167,3 +167,42 @@ worker operational issue; any Kubernetes deployment topology for stateful backgr
 **Trigger:** Any problem adding a message consumer to an existing .NET API without a separate worker process; any BackgroundService that calls Scoped DI services; any RabbitMQ consumer package selection question.
 
 **KB:** P016, D021, S021
+
+---
+
+## D022 — FMS Adapter Carrier Priority Chain (Private Helper Standard)
+
+**Established:** When an adapter method must resolve a field from N ordered tiers with null guards, use a private `ResolveXxx` method with explicit priority comments. Do NOT merge tiers into a single pre-computed variable — it destroys per-tier override capability. The Hexagonal lens (IShipmentProviderResolver interface) was evaluated and rejected for single-adapter, single-caller contexts; the Layered private helper is correct there.
+
+**Trigger:** Any brownfield adapter with multi-source field resolution; any method with two or more branches that apply the same resolution logic asymmetrically; any problem where a variable merges two distinct data tiers prematurely.
+
+**Key rule:** Hexagonal interface extraction is only warranted when (a) 2+ callers exist or (b) the rule must be swappable at runtime. Single-adapter, stable rule = private helper.
+
+**KB:** P017, D022, S022
+
+---
+
+## D023 -- OMS Strangler Fig Facade-First Migration (Extends D020)
+
+**Established:** When an OMS/microservices proposal describes services that are already deployed
+separately but still coupled via in-process project references, and the proposal wants to add a
+Gateway/BFF/observability/read-model layer on top: ship the Gateway + BFF + OpenTelemetry facade
+first (no internal rewrite required), then strangle the coupled call-sites one seam at a time
+behind the existing port/handler interfaces (legacy in-process vs target HTTP implementation,
+toggled per-seam via config). Defer the binary "full microservices vs re-consolidated modular
+monolith" end-state decision until real traffic/team/multi-tenancy data exists to re-evaluate
+D020's four rejection criteria (team size, atomic-TX need, broker availability, volume inflection
+point).
+
+**Trigger:** Any OMS (or similar system) proposal where services are already split into separate
+deployables but still coupled in-process; any "should we go full microservices now" question for
+a system that previously had a Modular Monolith precedent (D020) — always re-check D020's four
+criteria against current data before approving a full microservices commitment.
+
+**Key rule:** When a KB-search top match scores low (< 0.8) but the orchestrator's own memory
+recognizes a strong thematic precedent (same system lineage) that the raw tag-overlap score
+under-ranked due to denominator dilution (many unrelated tags on the older record), surface that
+precedent to lens-determiner manually. Do not let low Jaccard score cause a precedent to be
+silently missed.
+
+**KB:** P018, D023, S023. Extends D020 (OMS Modular Monolith Standard).
