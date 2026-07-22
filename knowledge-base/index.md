@@ -26,6 +26,7 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [P016](problems/P016-datamart-rabbitmq-activity-log-ingestion.md) | DataMart Dashboard — RabbitMQ Activity Log Ingestion Channel | dotnet, rabbitmq, ef-core, postgresql, background-service, hosted-service, message-consumer, write-path, integration-events, logging, activity-log | medium | D021 | S021 |
 | [P017](problems/P017-fms-adapter-shipment-provider-priority-inversion.md) | FMSUpdateAdapter — ShipmentProvider Priority Inversion in CreateUpdateStatusRequest | dotnet, correctness, priority-logic, adapter, shipment, fulfillment, null-safety, unit-testing, fms-adapter, activity-process | high | D022 | S022 |
 | [P018](problems/P018-oms-service-boundary-coupling-bff-gateway-observability.md) | OMS Service-Boundary Coupling Undermines Planned BFF/Gateway/Observability Layers | oms, microservices, service-boundary-violation, api-gateway, bff, observability, read-model, dotnet | high | D023 | S023 |
+| [P019](problems/P019-validate-service-order-save-timeout-duplicate-key.md) | Validate-Service Order Save Failures -- SQL Timeout + Duplicate-Key on Retry | ef-core, mssql, kafka, command-timeout, idempotency, duplicate-key, integration-events, dotnet | high | D024 | S024 |
 
 ---
 
@@ -56,6 +57,7 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [D021](decisions/D021-rabbitmq-hostedservice-hexagonal-activity-log.md) | RabbitMQ Consumer — IHostedService Hexagonal Adapter + RabbitMQ.Client + Service/Repository Ports | IHostedService as inbound Hexagonal adapter using RabbitMQ.Client with IActivityLogService port and IActivityLogRepository driven adapter | P016 | dotnet, rabbitmq, ef-core, postgresql, background-service, hosted-service, hexagonal-architecture, message-consumer, write-path | S021 |
 | [D022](decisions/D022-fms-adapter-shipment-provider-resolver-private-helper.md) | FMSUpdateAdapter — Private ResolveShipmentProvider Helper with Explicit 3-Tier Priority | In-Place Private Helper ResolveShipmentProvider (Layered Architecture) | P017 | dotnet, correctness, priority-logic, adapter, shipment, fulfillment, null-safety, unit-testing, fms-adapter, activity-process | S022 |
 | [D023](decisions/D023-oms-strangler-fig-facade-first-microservices-migration.md) | OMS Strangler Fig Facade-First Migration Toward Network-Isolated Microservices | Strangler Fig facade-first sequencing (Gateway/BFF/OTel first, incremental per-seam boundary strangling second, full-microservices-vs-monolith end-state deferred) | P018 | oms, microservices, service-boundary-violation, api-gateway, bff, observability, read-model, dotnet, strangler-fig | S023 |
+| [D024](decisions/D024-resilient-upsert-adapter-idempotent-dlq-order-ingestion.md) | Resilient Upsert Persistence Adapter (Hexagonal) + Idempotency Dedup Table & DLQ (Event-Driven) for validate-service MAO Ingestion | Hexagonal adapter hardening (Polly retry + MERGE upsert) as primary, Event-Driven idempotency/DLQ as required companion | P019 | ef-core, mssql, kafka, command-timeout, idempotency, duplicate-key, integration-events, dotnet | S024 |
 
 ---
 
@@ -82,7 +84,8 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [S021](snippets/S021-rabbitmq-hostedservice-hexagonal-log-consumer/) | RabbitMQ IHostedService Hexagonal Log Consumer — Entity + Service Port + Repository + BackgroundService | C# | P016 | D021 |
 | [S022](snippets/S022-fms-adapter-shipment-provider-resolver/) | FMSUpdateAdapter ResolveShipmentProvider Private Helper + Unit Tests | C# | P017 | D022 |
 | [S023](snippets/S023-oms-strangler-fig-master-service-client/) | OMS Strangler Fig Seam -- IMasterServiceClient (Legacy In-Process vs Target HTTP) | C# | P018 | D023 |
+| [S024](snippets/S024-order-persistence-gateway-polly-merge-dlq/) | Resilient Upsert Persistence Adapter -- Polly Retry + MERGE Upsert + Idempotency Guard + DLQ | C# | P019 | D024 |
 
 ---
 
-_Last updated: 2026-07-09 -- added P018/D023/S023 from inbox/oms/oms-architect-review.md (OMS Order.API/Master/Portal in-process coupling despite separate deployables; Strangler Fig facade-first migration chosen over immediate full Microservices cutover; explicitly reconciles with D020 Modular Monolith precedent, deferring the full-microservices-vs-monolith end-state decision pending traffic/team data)_
+_Last updated: 2026-07-13 -- added P019/D024/S024 from inbox/order-issue/req.md (validate-service intermittent order save failures; log evidence showed SQL CommandTimeout=10s boundary breach on INSERT INTO ProcessOrder plus duplicate-key UN_SourceOrderId violations after a Kafka consumer skip-after-1-retry with no DLQ; Hexagonal resilient-upsert-adapter chosen as primary with Event-Driven idempotency/DLQ as required companion, extending the D012/S012/D015 idempotency-key precedent to this consumer)_

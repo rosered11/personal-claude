@@ -1,13 +1,13 @@
 # Architecture Transition Roadmap
 **Goal:** Backend Developer → Software Architecture Specialist
 **Current Phase:** Foundation
-**Last Updated:** 2026-07-09
-**Consultation Count:** 5
+**Last Updated:** 2026-07-13
+**Consultation Count:** 6
 
 ---
 
 ## Current Focus
-Foundational pattern literacy is broadening well (5 consultations, 4+ domains touched: EF Core/ETL performance, Airflow orchestration, adapter correctness, and now three OMS system-design passes). The natural next step is migration strategy and brownfield sequencing — P018/D023 was the first consultation about *how to safely evolve* an already-deployed system rather than *how to design one from scratch* or *confirm an existing design*. Start paying deliberate attention to Strangler Fig, feature-flagged seams, and "defer the big decision until data exists" reasoning — this is a distinctly senior-architect skill (comfort with incremental, reversible steps under uncertainty) that shows up constantly in brownfield consulting.
+P019/D024 was your first *incident-response* consultation grounded entirely in raw log evidence rather than a design brief or architecture review -- you had to mine ~19K lines across 15 pod logs to separate the two real failure signatures (SQL command timeout vs duplicate-key/silent-skip) from noise before any lens could be applied. This is a distinctly senior-architect skill: root-causing from production telemetry, not from a pre-digested problem statement. It also produced your first case of *deliberately blending two lenses into one decision* rather than picking a winner and rejecting the other outright (Hexagonal adapter hardening as primary + Event-Driven idempotency/DLQ as a required companion) -- pay attention to when this blending move is the right call vs when a single lens should decisively win. Next step: deepen resilience-engineering vocabulary (transient-fault classification, backoff/retry policy design, DLQ operational discipline) since it recurred here and in D020/D023 but has never been the primary lens.
 
 ## Skill Domains
 
@@ -15,8 +15,9 @@ Foundational pattern literacy is broadening well (5 consultations, 4+ domains to
 - [ ] CAP theorem and consistency models — foundational for every distributed design decision
 - [ ] Failure modes: partial failures, network partitions, cascading failures
 - [x] In-process coupling vs real network boundary — **encountered in D023 (Order.API project-referenced Master/Portal despite separate deploy pipelines; "independently deployable" does not equal "decoupled" unless the call path is actually swapped from assembly reference to HTTP/gRPC)**
-- [x] Idempotency and exactly-once semantics — encountered in D018 (CreateOrderHandler idempotency check); reinforced in D020 (ACL adapter idempotency key on outbox worker retry)
+- [x] Idempotency and exactly-once semantics — encountered in D018 (CreateOrderHandler idempotency check); reinforced in D020 (ACL adapter idempotency key on outbox worker retry); reinforced again in D024 (extended the same dedup-table pattern to a Kafka consumer for the first time, plus a MERGE/upsert as a database-level idempotency backstop)
 - [ ] Backpressure and flow control
+- [x] Transient-fault handling and retry-policy design (exponential backoff, error-code classification) — **first applied in D024 (Polly policy classifying SQL Server transient error codes including -2 Execution Timeout Expired, which EF Core's default SqlServerRetryingExecutionStrategy does not cover out of the box — a subtlety only visible by reading the actual stack trace in production logs)**
 - [x] Single-writer enforcement — encountered in D020 (FOR UPDATE SKIP LOCKED for outbox worker; Kubernetes single-replica deployment constraint)
 
 ### Data Architecture Patterns
@@ -32,16 +33,16 @@ Foundational pattern literacy is broadening well (5 consultations, 4+ domains to
 - [ ] Service discovery and health checking
 
 ### Architectural Patterns (Structural)
-- [x] Hexagonal Architecture (Ports & Adapters) — **evaluated in D022 (FMSUpdateAdapter); rejected for a single-adapter fix in favor of Layered private helper, but the port/adapter framing was used to diagnose the correctness boundary**
+- [x] Hexagonal Architecture (Ports & Adapters) — **evaluated in D022 (FMSUpdateAdapter); rejected for a single-adapter fix in favor of Layered private helper, but the port/adapter framing was used to diagnose the correctness boundary. Won outright in D024 (IOrderPersistenceGateway) as the primary lens — first time Hexagonal was chosen as the winning option, not just a diagnostic frame**
 - [x] Saga Pattern — distributed transaction coordination — **evaluated in D019 (Returns flow); rejected for 2-service case in favor of outbox+ACL; understand when Saga is warranted (3+ services) vs overkill**
 - [x] Strangler Fig — incremental legacy migration — **encountered in D023 (facade-first: ship Gateway/BFF/OTel in front of the coupled Order.API immediately, then strangle Order-to-Master/Portal project references one seam at a time via a feature-flagged legacy-vs-HTTP port, instead of a big-bang network-boundary rewrite)**
 - [x] Domain-Driven Design: bounded contexts, aggregates, ubiquitous language — **encountered in D018 (Order aggregate root, state machine, Anti-Corruption Layers, RolloutPolicy domain service) and D019 (Package value object, PreHoldState snapshot, Returns sub-machine invariants)**
 - [x] Modular Monolith — module boundary enforcement, schema isolation, future service extraction path — **encountered in D020 (4-module OMS: Order/Payment/Returns/Configuration with separate PostgreSQL schemas, ID-only cross-module access, ACL adapters as boundary contracts)**
 
 ### Event-Driven Architecture
-- [ ] Message brokers: Kafka, RabbitMQ — when to use each
+- [x] Message brokers: Kafka, RabbitMQ — when to use each — **first hands-on Kafka consultation in D024 (EventBus.Kafka consumer for validate-service); "Attempt=1/1" retry budget and at-least-once redelivery semantics were the direct trigger for the duplicate-key failures observed**
 - [ ] Event schema design and evolution
-- [ ] Dead letter queues and poison pill handling
+- [x] Dead letter queues and poison pill handling — **encountered as a gap in D024 (production behavior was "skip after 1 retry" with no DLQ, meaning failed order events were silently dropped); DLQ + alerting adopted as a required companion to the primary fix, not optional**
 - [x] Choreography vs. orchestration — **actively evaluated in D019: Returns flow uses choreography (outbox+ACL) rather than orchestration (Saga) — understand the threshold (service count, failure isolation requirements) that tips the balance**
 - [x] Outbox pattern — **encountered in D018 (reliable Sprint Connect event delivery); extended in D019 (new domain events for Returns, OnHold, PackageLost dispatched through same outbox table)**
 
@@ -104,6 +105,12 @@ Foundational pattern literacy is broadening well (5 consultations, 4+ domains to
 | Strangler Fig — facade-first sequencing, per-seam feature-flagged legacy vs target adapter | 2026-07-09 | P018/D023/S023 | Architectural Patterns | High |
 | Deferring a binary architecture decision pending real data — re-checking a prior precedent's (D020) rejection criteria instead of assuming they still hold | 2026-07-09 | P018/D023 | Organizational & Communication Skills | High |
 | OpenTelemetry as the unifying tracing/metrics/logging layer (W3C traceparent across Gateway -> BFF -> domain services) | 2026-07-09 | P018/D023 | Distributed Systems | Medium |
+
+| Root-causing from raw production logs (19K lines, 15 pods) rather than a pre-digested problem statement | 2026-07-13 | P019 | Organizational & Communication Skills | High |
+| SQL Server transient-fault classification — error code -2 (Execution Timeout) not covered by EF Core's default retry strategy | 2026-07-13 | P019/D024/S024 | Distributed Systems | High |
+| Kafka at-least-once delivery semantics — consumer retry budget ("Attempt=1/1") and the silent-skip data-loss risk when no DLQ exists | 2026-07-13 | P019/D024 | Event-Driven Architecture | High |
+| MERGE ... WITH (HOLDLOCK) as a database-level idempotency backstop, complementary to (not a replacement for) an application-level dedup table | 2026-07-13 | P019/D024/S024 | Data Architecture Patterns | High |
+| Blending two lenses into one decision (Hexagonal primary + Event-Driven required companion) instead of picking a single winner | 2026-07-13 | P019/D024 | Architectural Patterns | Medium |
 
 ---
 
@@ -352,6 +359,56 @@ genuinely diverges.
   serve better -- and what evidence would change your answer?
 
 ---
+
+### Consultation: Validate-Service Order Save Failures (2026-07-13) -- KB: P019 / D024 / S024
+
+This was your first incident-response consultation grounded entirely in raw production log
+evidence -- 19,228 lines across 15 Kubernetes pod logs -- rather than a design brief or a
+pre-written architecture review. Here is what to study:
+
+**1. Root-Causing From Logs, Not From a Problem Statement**
+The user's own description ("some tables intermittently fail to save, retry usually works") was
+correct but incomplete. Grepping for ERROR/Exception/Timeout/retry across all 15 pod logs found
+that only 2 of 15 pods had any error-level entries at all -- confirming genuine intermittency --
+and revealed two *distinct* failure signatures the user had conflated into one: a SQL command
+timeout, and a duplicate-key/silent-skip failure. Always separate "what the user observed" from
+"what the evidence actually shows"; they overlapped here but were not identical.
+- Practice: Next time you get a vague "sometimes X fails" report, grep for the failure keywords
+  across every available log source *before* forming a root-cause hypothesis, and check whether
+  all observed failures are actually the same failure.
+
+**2. Transient-Fault Classification Is Not Automatic**
+The stack trace showed `SqlServerExecutionStrategy.ExecuteAsync` -- meaning EF Core's built-in
+retry-on-failure strategy was already configured -- yet the exception still reached the caller on
+the first hit. The reason: SQL error `-2` (Execution Timeout Expired) is not in EF Core's default
+transient-error list unless explicitly added. This is a recurring lesson: "we already have retry
+logic" is not the same as "we retry the specific failure we are seeing." Always check *which*
+error codes a resilience policy actually classifies as transient.
+- Study: Polly documentation on `WaitAndRetryAsync` and custom exception predicates;
+  `SqlServerRetryingExecutionStrategy` source for its default transient error list
+- Practice: For one resilience policy in your own codebase, list every error code it retries and
+  every error code it does not, and check that list against your actual production error logs.
+
+**3. Database-Level Idempotency (MERGE/Upsert) vs Application-Level Dedup Table**
+D024 used both, deliberately: the `ProcessedEvents` dedup table is a fast-path guard (cheap,
+avoids most duplicate writes before they reach SQL Server), while the `MERGE ... WITH (HOLDLOCK)`
+upsert is the correctness backstop for the race the dedup check itself cannot fully prevent (two
+pods processing the same event within milliseconds of each other, observed directly in the qh492
+log at 08:51:29.217 and .243). Neither alone is sufficient; understand why both layers exist.
+- Study: "Idempotent Receiver" pattern (Enterprise Integration Patterns); SQL Server MERGE
+  documentation and its known race conditions without `HOLDLOCK`
+- Practice: In S024, trace exactly which race the dedup table misses that the MERGE catches.
+
+**4. When to Blend Two Lenses Instead of Picking a Winner**
+Unlike most prior consultations (D022 rejected Hexagonal outright; D023 picked Strangler Fig over
+Microservices), D024 explicitly adopted *both* lenses -- Hexagonal as the primary fix (it matched
+the literal log evidence) and Event-Driven idempotency/DLQ as a required companion (without it,
+silent data loss remained possible). Learn to recognize when two lenses address genuinely
+different failure modes of the *same* problem rather than competing solutions to the *same*
+failure mode -- that is the signal that blending, not choosing, is the correct move.
+- Practice: Re-read D015 (P010) — the closest KB precedent — and identify why it also blended DDD
+  (root cause fix) with EDA (idempotency), rather than picking one.
+
 
 ## Phase Progression Criteria
 

@@ -1,4 +1,3 @@
-# Memory Index — javit-architecture-lead
-
-- [KB Precedents](kb_precedents.md) — D001/D003/D005/D008/D009/D010/D012 as established standards; when to reference vs re-derive
-- [Lens Combinations](lens_combinations.md) — Validated lens pairs by domain: EF Core/ETL/Distributed/DB-selection/API/Subprocess; high-overlap KB guidance
+- [Bash heredoc file writes](feedback_bash_heredoc_writes.md) — chunk long heredocs; use python heredoc (not `python3 -c`) for text-replace edits
+- [No Task tool in this harness](feedback_no_task_tool.md) — sometimes must perform all pipeline agent roles inline via Bash-only tools
+- [Order/OMS domain KB cluster](project_order_domain_kb_cluster.md) — recurring tags/precedents (P010/D015, P013-P015/D018-D020) to check for any new order problem
