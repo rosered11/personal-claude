@@ -523,7 +523,7 @@ class NotionClient:
 
     def append_children(self, block_id: str, children: list) -> None:
         for i in range(0, len(children), 100):
-            self._req("POST", f"/blocks/{block_id}/children", json={"children": children[i:i+100]})
+            self._req("PATCH", f"/blocks/{block_id}/children", json={"children": children[i:i+100]})
             if i + 100 < len(children):
                 time.sleep(REQUEST_DELAY)
 

@@ -1,3 +1,7 @@
 - [Bash heredoc file writes](feedback_bash_heredoc_writes.md) — chunk long heredocs; use python heredoc (not `python3 -c`) for text-replace edits
 - [No Task tool in this harness](feedback_no_task_tool.md) — sometimes must perform all pipeline agent roles inline via Bash-only tools
-- [Order/OMS domain KB cluster](project_order_domain_kb_cluster.md) — recurring tags/precedents (P010/D015, P013-P015/D018-D020) to check for any new order problem
+- [Order/OMS domain KB cluster](project_order_domain_kb_cluster.md) — recurring tags/precedents (P010/D015, P013-P015/D018-D020, P018/D023, P020/D025) to check for any new order problem
+- [External repo grounding](project_external_repo_grounding.md) — how to ground consultations in a real external codebase (Sprint-OMS); scope Glob/Grep per-subfolder, redact credentials found
+- [EF Core stacked-retry amplification pattern](pattern_ef_core_stacked_retry.md) -- check DI + call-site for double retry layers on any EF Core SQL timeout
+- [Diagnostic vs design consultations](pattern_diagnostic_vs_design_consultations.md) — how to handle forensic "is X caused by Y" inbox problems (P022/D027)
+- [Decided vs deployed -- first KB UPDATE precedent](pattern_decided_vs_deployed_kb_update.md) -- P023/D028/S028 revised in place 2026-07-29; always verify a prior decision was actually deployed, not just decided
