@@ -1,3 +1,3 @@
 # Memory Index -- lens-determiner
 
-- [Lens Pair History -- OMS Domain](lens_pair_history.md) -- which lens pairs used for which OMS sub-problems; rule for choosing between them
+- [Lens Pair History -- Across Domains](lens_pair_history.md) -- which lens pairs used for OMS sub-problems and non-OMS domains (e.g. warehouse/PTL); rules for choosing between them

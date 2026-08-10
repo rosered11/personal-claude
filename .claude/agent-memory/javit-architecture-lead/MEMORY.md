@@ -1,7 +1,4 @@
-- [Bash heredoc file writes](feedback_bash_heredoc_writes.md) — chunk long heredocs; use python heredoc (not `python3 -c`) for text-replace edits
-- [No Task tool in this harness](feedback_no_task_tool.md) — sometimes must perform all pipeline agent roles inline via Bash-only tools
-- [Order/OMS domain KB cluster](project_order_domain_kb_cluster.md) — recurring tags/precedents (P010/D015, P013-P015/D018-D020, P018/D023, P020/D025) to check for any new order problem
-- [External repo grounding](project_external_repo_grounding.md) — how to ground consultations in a real external codebase (Sprint-OMS); scope Glob/Grep per-subfolder, redact credentials found
-- [EF Core stacked-retry amplification pattern](pattern_ef_core_stacked_retry.md) -- check DI + call-site for double retry layers on any EF Core SQL timeout
-- [Diagnostic vs design consultations](pattern_diagnostic_vs_design_consultations.md) — how to handle forensic "is X caused by Y" inbox problems (P022/D027)
-- [Decided vs deployed -- first KB UPDATE precedent](pattern_decided_vs_deployed_kb_update.md) -- P023/D028/S028 revised in place 2026-07-29; always verify a prior decision was actually deployed, not just decided
+- [Sprint-OMS Repo Lineage](sprint-oms-repo-lineage.md) — recurring OMS consultation thread, real source path, and precedent decisions (D020/D023/D025/D029) not to silently contradict.
+- [inbox/oms/req.md Gets Reused](inbox-oms-req-path-reused.md) — same inbox path has held unrelated problems twice; always re-read fresh, never assume via path alone.
+- [No Task Tool / Heredoc Size Limit](no-task-tool-large-heredoc-limit.md) — must simulate pipeline directly and write KB files via chunked Bash heredocs (forward-slash paths only).
+- [PTL Warehouse Lineage](ptl-warehouse-lineage.md) — inbox/push-to-light/ is CMG's Put-to-Light system, unrelated to Sprint-OMS; anchor at P026/D031/S031, pptx needs pre-extraction.

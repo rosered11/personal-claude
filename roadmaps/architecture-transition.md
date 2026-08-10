@@ -1,13 +1,29 @@
 # Architecture Transition Roadmap
 **Goal:** Backend Developer → Software Architecture Specialist
-**Current Phase:** Foundation
-**Last Updated:** 2026-07-13
-**Consultation Count:** 6
+**Current Phase:** Intermediate
+**Last Updated:** 2026-08-10
+**Consultation Count:** 9
 
 ---
 
 ## Current Focus
-P019/D024 was your first *incident-response* consultation grounded entirely in raw log evidence rather than a design brief or architecture review -- you had to mine ~19K lines across 15 pod logs to separate the two real failure signatures (SQL command timeout vs duplicate-key/silent-skip) from noise before any lens could be applied. This is a distinctly senior-architect skill: root-causing from production telemetry, not from a pre-digested problem statement. It also produced your first case of *deliberately blending two lenses into one decision* rather than picking a winner and rejecting the other outright (Hexagonal adapter hardening as primary + Event-Driven idempotency/DLQ as a required companion) -- pay attention to when this blending move is the right call vs when a single lens should decisively win. Next step: deepen resilience-engineering vocabulary (transient-fault classification, backoff/retry policy design, DLQ operational discipline) since it recurred here and in D020/D023 but has never been the primary lens.
+**Phase promotion: Foundation → Intermediate.** Across 8 consultations you have now explained and applied 8+ patterns with tradeoffs (DDD, CQRS, Outbox, Saga, Strangler Fig, Modular Monolith, Hexagonal, Event-Driven, Layered, Architecture Fitness Functions, Service Mesh) across distinct domains (greenfield OMS design, ETL/batch pipelines, production incident response, database maintenance, and now three rounds of pure codebase audit on the same live system). You are also starting to do Intermediate-track work early: in P025/D030 you (via the pipeline) recognized that two lenses were not competing for the same fix but attacking *different layers of the same problem* -- a form of tradeoff reasoning that goes beyond "pick the better option."
+
+P025/D030 was the third same-day-adjacent audit of Sprint-OMS (after P018/D023, P024/D029), and it deliberately did not repeat the same lens pairing (Hexagonal+Strangler Fig) once secrets management and transport security became co-equal findings -- lens-determiner instead paired Hexagonal with Service Mesh, a lens that had never been evaluated in this KB before. The decision blended them by layer rather than by priority: Hexagonal (application/compile-time layer) as primary because only it satisfies the "secrets must be rotated via a seam" constraint, with Service Mesh's most urgent code-fixable finding (disabled TLS cert validation) folded into the Hexagonal implementation as an interim fix, and full mesh adoption (mTLS, proxy-level resilience) explicitly routed to a Phase-2 track pending external infrastructure. Next step: since Service Mesh has now entered your KB for the first time, spend deliberate study time on its actual capability boundary (what a sidecar proxy can and cannot fix) so you can anticipate, before the pipeline runs, which findings belong at the transport layer vs. the application layer.
+
+Consultation 9 (P026/D031, 2026-08-10) is your first consultation entirely outside the
+Sprint-OMS/ETL lineage: a warehouse Put-to-Light (PTL) integration problem spanning
+WMS, SAP, a PTL/MHE hardware controller, and a Marketplace. You (via the pipeline)
+correctly recognized this as a fresh domain requiring generalization of already-learned
+vocabulary rather than reuse of an OMS-specific pattern: Saga Pattern vs Event-Driven
+Architecture (orchestration vs choreography) is a pairing you first studied in P014/D019
+purely as a service-count threshold rule; here it was re-applied as a layer split
+(orchestration owns cross-system invariants, events carry state between systems) in a
+domain that has nothing to do with order aggregates. Next step: notice that this is the
+same "blend by layer, not by picking a winner" skill from D030 (Hexagonal + Service
+Mesh), now demonstrated a second time with a completely different lens pair -- that
+repetition across unrelated domains is the real signal this reasoning pattern has been
+internalized, not just memorized for one system.
 
 ## Skill Domains
 
@@ -33,24 +49,37 @@ P019/D024 was your first *incident-response* consultation grounded entirely in r
 - [ ] Service discovery and health checking
 
 ### Architectural Patterns (Structural)
-- [x] Hexagonal Architecture (Ports & Adapters) — **evaluated in D022 (FMSUpdateAdapter); rejected for a single-adapter fix in favor of Layered private helper, but the port/adapter framing was used to diagnose the correctness boundary. Won outright in D024 (IOrderPersistenceGateway) as the primary lens — first time Hexagonal was chosen as the winning option, not just a diagnostic frame**
+- [x] Hexagonal Architecture (Ports & Adapters) — **evaluated in D022 (FMSUpdateAdapter); rejected for a single-adapter fix in favor of Layered private helper, but the port/adapter framing was used to diagnose the correctness boundary. Won outright in D024 (IOrderPersistenceGateway) as the primary lens — first time Hexagonal was chosen as the winning option, not just a diagnostic frame. Reinforced in D029 (service-boundary ports) and extended into a new application area in D030 — a Hexagonal port (ISecretProvider) used as a *secrets rotation seam*, not just a service-boundary decoupling mechanism**
+- [x] Service Mesh (sidecar proxy pattern) — mTLS, transport-level retry/circuit-breaking, and centralized observability with zero application code changes — **first evaluated in D030 (Istio/Linkerd PERMISSIVE-mode proposal for the Sprint-OMS gRPC fabric). Not chosen as primary because it cannot fix compile-time coupling or plaintext secrets (application-layer concerns), but its one urgent, code-fixable finding — disabled TLS certificate validation — was folded into the winning Hexagonal solution as an interim fix; full mesh adoption deferred to an explicit Phase-2 track pending external K8s sidecar-injection infrastructure. Key lesson: know the mesh's scope boundary before proposing it**
 - [x] Saga Pattern — distributed transaction coordination — **evaluated in D019 (Returns flow); rejected for 2-service case in favor of outbox+ACL; understand when Saga is warranted (3+ services) vs overkill**
+- [x] Saga Pattern — won outright as the *primary* lens for the first time in D031 (PTL Task Orchestrator), in a domain with no relationship to OMS; the threshold that mattered here was not service count but "who enforces the cross-cutting invariants" (1 order=1 box=1 invoice, single active box per slot, mixed-carton rejection) — a generalization of the D019 threshold rule beyond service-count alone
 - [x] Strangler Fig — incremental legacy migration — **encountered in D023 (facade-first: ship Gateway/BFF/OTel in front of the coupled Order.API immediately, then strangle Order-to-Master/Portal project references one seam at a time via a feature-flagged legacy-vs-HTTP port, instead of a big-bang network-boundary rewrite)**
 - [x] Domain-Driven Design: bounded contexts, aggregates, ubiquitous language — **encountered in D018 (Order aggregate root, state machine, Anti-Corruption Layers, RolloutPolicy domain service) and D019 (Package value object, PreHoldState snapshot, Returns sub-machine invariants)**
 - [x] Modular Monolith — module boundary enforcement, schema isolation, future service extraction path — **encountered in D020 (4-module OMS: Order/Payment/Returns/Configuration with separate PostgreSQL schemas, ID-only cross-module access, ACL adapters as boundary contracts)**
+- [x] Architecture fitness functions — automated, CI-enforced tests of structural rules (e.g. dependency direction) — **first produced in D029/S029 (NetArchTest suite forbidding a service's Core project from depending on another service's Infrastructure/Integration assembly, seeded with a shrink-only allow-list of the exact P024 violations)**
 
 ### Event-Driven Architecture
 - [x] Message brokers: Kafka, RabbitMQ — when to use each — **first hands-on Kafka consultation in D024 (EventBus.Kafka consumer for validate-service); "Attempt=1/1" retry budget and at-least-once redelivery semantics were the direct trigger for the duplicate-key failures observed**
 - [ ] Event schema design and evolution
 - [x] Dead letter queues and poison pill handling — **encountered as a gap in D024 (production behavior was "skip after 1 retry" with no DLQ, meaning failed order events were silently dropped); DLQ + alerting adopted as a required companion to the primary fix, not optional**
 - [x] Choreography vs. orchestration — **actively evaluated in D019: Returns flow uses choreography (outbox+ACL) rather than orchestration (Saga) — understand the threshold (service count, failure isolation requirements) that tips the balance**
+- [x] Event-carried state transfer as a saga's transport layer — encountered in D031: the saga (orchestration) still communicates over an async event bus (StockUpdated, PtlTaskConfirmed, SoStoCreated), showing choreography and orchestration are not mutually exclusive — events can be the *medium* while a saga remains the *decision-maker*
 - [x] Outbox pattern — **encountered in D018 (reliable Sprint Connect event delivery); extended in D019 (new domain events for Returns, OnHold, PackageLost dispatched through same outbox table)**
+
+### Security & Secrets Management
+- [x] Secrets as an abstraction seam, not a config value — **first deep dive in D030 (ISecretProvider port; environment-variable-first with a logged legacy-appsettings fallback so migration is zero-disruption); the underlying rule — committed secrets must be *rotated* via a seam, not merely deleted from source — is what made Hexagonal the only lens satisfying the hard constraints**
+- [x] Transport security as an explicit architectural concern, not a config flag — **encountered in D030: ~30 gRPC clients had TLS certificate validation entirely disabled via `DangerousAcceptAnyServerCertificateValidator`; interim fix pins to an internal CA thumbprint sourced through the same ISecretProvider port, full mTLS deferred to Service Mesh Phase 2**
+- [ ] Zero-trust networking principles (never trust the internal network by default)
+- [ ] Secret rotation strategies and "secretless" architectures (workload identity, short-lived tokens)
+- [ ] Threat modeling for architecture reviews (STRIDE or similar)
+- [x] Security layering — JWT per channel + HMAC per integration + Vault for secrets — encountered earlier in D020; **this recurring theme (D020 → D030) is why this got promoted to its own domain rather than staying folded into System Design Fundamentals**
 
 ### Organizational & Communication Skills
 - [ ] Architecture Decision Records (ADRs) — how to document decisions
 - [ ] Communicating tradeoffs to non-technical stakeholders
 - [ ] Leading design reviews and RFC processes
 - [ ] Defining and measuring non-functional requirements
+- [x] Distinguishing "unused but present" from "absent" as evidence — **encountered in D030: Polly was referenced in the project but never actually configured as a resilience policy — a materially different finding from "no resilience library exists," and only visible by reading the actual DI wiring, not just the .csproj**
 
 ### Cloud & Infrastructure
 - [ ] Managed services vs. self-hosted tradeoffs
@@ -111,6 +140,20 @@ P019/D024 was your first *incident-response* consultation grounded entirely in r
 | Kafka at-least-once delivery semantics — consumer retry budget ("Attempt=1/1") and the silent-skip data-loss risk when no DLQ exists | 2026-07-13 | P019/D024 | Event-Driven Architecture | High |
 | MERGE ... WITH (HOLDLOCK) as a database-level idempotency backstop, complementary to (not a replacement for) an application-level dedup table | 2026-07-13 | P019/D024/S024 | Data Architecture Patterns | High |
 | Blending two lenses into one decision (Hexagonal primary + Event-Driven required companion) instead of picking a single winner | 2026-07-13 | P019/D024 | Architectural Patterns | Medium |
+| Distributed monolith — independently deployable services with a real gRPC seam that is bypassed by direct in-process Infrastructure references | 2026-07-31 | P024/D029 | Distributed Systems | High |
+| Architecture fitness functions — encoding a structural rule (dependency direction) as an executable, CI-enforced test with a shrink-only allow-list | 2026-07-31 | P024/D029/S029 | Architectural Patterns | High |
+| Codebase-comprehension audit as a distinct consulting mode — deriving architecture purely from source (ProjectReferences, using-statements, migrations, appsettings) with no docs | 2026-07-31 | P024 | Organizational & Communication Skills | Medium |
+| Hexagonal ports owned by the consuming service vs. borrowing another service's interface — ownership of the contract, not just its existence, determines real decoupling | 2026-07-31 | P024/D029/S029 | Architectural Patterns | High |
+
+| Complementary (not competing) lenses — Hexagonal (compile-time coupling + secrets rotation seam) and Service Mesh (transport-layer TLS/resilience) each confirmed distinct real evidence for the same audit; the decision blended by *layer*, not by picking a single winner | 2026-07-31 | P025/D030 | Architectural Patterns | High |
+| ISecretProvider port — Hexagonal ports applied to secrets management as a rotation seam, a new application of Ports & Adapters beyond service-boundary decoupling | 2026-07-31 | P025/D030/S030 | Security & Secrets Management | High |
+| Service Mesh (sidecar proxy pattern) — first real evaluation in this KB; scope boundary is transport-layer TLS/retry/circuit-breaking/observability, and it cannot fix compile-time coupling or plaintext secrets | 2026-07-31 | P025/D030 | Cloud & Infrastructure | High |
+| Folding a deferred lens's single most urgent, code-fixable finding into the chosen lens's implementation, instead of discarding the whole lens or adopting it wholesale | 2026-07-31 | P025/D030 | Architectural Patterns | Medium |
+| "Referenced but never configured" as a distinct audit finding from "absent" — Polly present in the project but no resilience policy actually wired up | 2026-07-31 | P025/D030 | Organizational & Communication Skills | Medium |
+| Saga Pattern winning outright as primary orchestrator in a non-OMS domain (warehouse PTL) — invariant-ownership, not service count, as the deciding threshold | 2026-08-10 | P026/D031/S031 | Architectural Patterns | High |
+| Event-carried state transfer as saga transport — an orchestrator can use an async event bus for I/O while remaining the sole decision-maker for cross-cutting invariants | 2026-08-10 | P026/D031/S031 | Event-Driven Architecture | High |
+| Synchronous rejection vs eventual-consistency reaction — a hardware controller needing an immediate error (mixed-store carton) cannot be served by a pure event listener, only by a synchronous call into the orchestrator | 2026-08-10 | P026/D031 | Distributed Systems | Medium |
+| Cross-domain lens reuse — applying an OMS-learned lens pairing (Saga vs Event-Driven) to a warehouse/hardware-integration domain with zero shared vocabulary, confirming the reasoning generalizes rather than being domain-specific | 2026-08-10 | P026/D031 | Organizational & Communication Skills | High |
 
 ---
 
@@ -410,7 +453,206 @@ failure mode -- that is the signal that blending, not choosing, is the correct m
   (root cause fix) with EDA (idempotency), rather than picking one.
 
 
+---
+
+### Consultation: OMS Codebase Audit -- Distributed Monolith Coupling (2026-07-31) -- KB: P024 / D029 / S029
+
+This was your first pure codebase-comprehension audit -- no incident, no design brief, just "read
+six real solution areas and tell me the current pattern, the risks, and the next actions," with an
+explicit constraint to derive everything from source and ignore in-repo documentation. Here is what
+to study:
+
+**1. "A Seam Exists" Is Not the Same As "The Seam Is Used"**
+P018 (2026-07-09) found that Order.API project-referenced Master/Portal despite separate deploy
+pipelines. P024 went further: it found that a real gRPC contract already exists for many of the same
+domains (28 service/client pairs under Order alone) -- and application code still bypasses it via a
+direct Infrastructure reference (e.g. Order.Core calling Portal.Infrastructure.Interfaces.TMS.
+ITmsPostponeService directly instead of through the sibling gRPC client). This is a more advanced
+diagnosis than "no decoupling mechanism exists" -- it is "the decoupling mechanism exists and is
+being ignored," which points to a process/enforcement gap, not a design gap.
+- Study: Sam Newman, "Monolith to Microservices" ch. 3 (identifying seams you already have vs. seams
+  you need to create)
+- Practice: In a codebase you own, find one place where a network-capable contract (gRPC/HTTP client)
+  already exists for a dependency that is also reachable in-process. Which one does the actual code
+  use, and why?
+
+**2. Architecture Fitness Functions -- Turning a Convention Into a Build Failure**
+D029/S029 is your first KB decision whose primary artifact is not a design pattern but an executable
+CI test (NetArchTest) that fails the build when a service's Core project depends on another
+service's Infrastructure/Integration assembly. The shrink-only allow-list technique -- seed the test
+with today's known violations so it does not break the build on adoption, then only ever remove
+entries, never add them -- is the standard way to introduce a fitness function into a codebase that
+already has debt, without requiring a stop-the-world cleanup first.
+- Study: "Building Evolutionary Architectures" by Ford, Parsons, Kua (the fitness function concept
+  end to end); NetArchTest / ArchUnitNET documentation
+- Practice: Write one fitness function for a codebase you own that encodes a rule you currently only
+  enforce via code review (e.g. "the domain layer must not reference the web framework").
+
+**3. Ownership of a Contract, Not Just Its Existence, Determines Real Decoupling**
+The `ITmsPostponeService` interface in this audit already looked like a port -- Order.Core depends on
+an interface, not a concrete class. But the interface is defined inside Portal's own assembly, so
+Order still has a hard compile-time dependency on Portal, and Order's Docker image bundles Portal's
+third-party integration code. The fix in D029 is not "add an interface" (one already existed) -- it
+is "move the interface to be owned by the consumer, and call the existing gRPC seam from an adapter
+behind it." This is a subtler version of the Hexagonal Ports & Adapters lesson from D022/D024: the
+port must live on the side of the caller, in the caller's own bounded context.
+- Study: Alistair Cockburn's original Hexagonal Architecture writeup (ports are defined by the
+  application core that needs them, not by the thing being called)
+- Practice: Find one interface in a codebase you own that is defined in the "wrong" project (owned
+  by the callee rather than the caller). What would it take to move it?
+
+**4. Auditing With a Hard Constraint (No Docs) Forces Evidence-Based Claims**
+Being told explicitly not to read documentation and to derive every claim from `.csproj` files,
+`using` statements, `appsettings.json`, and migration history is a useful discipline: it prevents an
+audit from silently reproducing what a README claims rather than what the code does. Two genuinely
+new, code-only findings came out of this constraint: `AddHealthChecks()` is now present on all five
+services (a real fix since P018, not documented anywhere), and PII-encryption migrations were
+added and revised five times in three days (visible only in migration file timestamps, not in any
+document) -- a concrete signal of reactive, discovery-driven schema design under AI-assisted
+iteration.
+- Practice: Next time you inherit a codebase, spend the first hour deriving its architecture from
+  `.csproj`/dependency-graph evidence alone before reading any of its documentation, then compare
+  the two -- the gap between them is often the most important finding.
+
+### Consultation: OMS Architecture Audit After AI Vibe-Coding (2026-07-31) -- KB: P025 / D030 / S030
+
+This was your third audit pass on the same Sprint-OMS codebase, and the first where the pipeline
+paired Hexagonal Architecture with a lens that had never appeared in your KB before: Service Mesh.
+It is also the first time a decision explicitly blended two lenses *by architectural layer* rather
+than by choosing one as primary and the other as an optional companion. Here is what to study:
+
+**1. Recognizing When Two Lenses Attack Different Layers of the Same Problem**
+D024 (P019) taught you to blend lenses when they address different *failure modes* of one problem
+(Hexagonal fixed the persistence bug; Event-Driven closed the data-loss gap). D030 is a sharper
+version of the same skill: Hexagonal and Service Mesh here address the *same audit* but at
+genuinely different architectural layers -- application/compile-time (coupling, secrets) vs.
+transport/infrastructure (TLS, retries, observability). Neither lens could have produced the
+other's finding. Learning to ask "which layer does this lens actually operate at?" before treating
+two options as mutually exclusive is a distinctly Intermediate-level skill -- it is the difference
+between "pick the best option" and "map each option onto the part of the system it actually
+governs."
+- Study: Gregor Hohpe's "The Software Architect Elevator" (ch. on cross-cutting concerns living at
+  different altitudes of a system); Istio/Linkerd architecture docs' own "what a service mesh does
+  and does not do" sections
+- Practice: Next time two lenses are proposed, before reading the decision, sketch which layer
+  each one modifies (code, deployment topology, network, data) and predict whether they compete or
+  compose.
+
+**2. Hexagonal Ports as a Secrets-Rotation Seam, Not Just a Service Boundary**
+Every prior Hexagonal encounter in your KB (D021, D022, D024, D029) used ports to decouple a
+service from another service or external system. D030 applies the identical mechanism to a
+different problem: `ISecretProvider` is a port whose adapters can be swapped from
+"environment-variable-with-legacy-fallback" today to "Key Vault" tomorrow, without touching a
+single call site. The generalizable insight: Hexagonal Architecture is not really about
+"services" -- it is about isolating *any* volatile external dependency (a downstream service, a
+secrets store, a certificate authority) behind an interface owned by the code that needs it.
+- Study: Alistair Cockburn's original Hexagonal write-up again, specifically the framing of "ports
+  for anything the application core depends on that can change independently of it"
+- Practice: List three things in a codebase you own that are not "services" but are still volatile
+  external dependencies (feature flag providers, clocks, ID generators, secrets). Which ones
+  already have a port? Which ones are called directly?
+
+**3. Service Mesh's Real Scope Boundary**
+This is your first hands-on evaluation of Service Mesh as a lens, and the decision is explicit
+about what it cannot do: it has zero effect on compile-time coupling (Order.Core still directly
+referencing Portal.Infrastructure) and zero effect on plaintext secrets in appsettings.json --
+both are application-layer problems that a sidecar proxy never touches. What it is genuinely good
+for -- mTLS, proxy-level retry/circuit-breaking, centralized observability -- was still captured,
+just routed to an explicit Phase-2 track instead of silently dropped. Internalize this scope
+boundary now, before you are the one proposing Service Mesh in a design review and someone asks
+"does this fix our secrets problem?"
+- Study: Istio documentation's own architecture overview (sidecar vs. control plane
+  responsibilities); William Morgan's (Linkerd) writing on what problems a mesh does and does not
+  solve
+- Practice: For a system you know that uses (or is considering) a service mesh, list every
+  finding from your last security or coupling review and mark each one "mesh can fix this" or
+  "mesh cannot touch this."
+
+**4. Reading Evidence: "Referenced" vs. "Actually Configured"**
+The audit's resilience finding was not "Polly is missing" -- it was "Polly is referenced in the
+`.csproj` but no resilience policy is ever wired up in DI." This is the same class of discipline
+you first exercised in D024 (checking *which* error codes a retry policy actually classifies as
+transient, not just whether retry logic exists), now applied one level higher: whether a
+dependency's mere presence in the dependency graph implies it is doing anything at all. This
+distinction — dependency present vs. dependency active — is a habit worth carrying into every
+future audit.
+- Practice: Pick a NuGet/npm package in a codebase you own that "should" be providing some
+  cross-cutting behavior (retries, caching, logging). Trace whether it is actually wired into the
+  request path, or just sitting in the dependency graph unused.
+
+---
+
+### Consultation: PTL Warehouse Integration -- Manual File Exchange to API-Driven Orchestration (2026-08-10) -- KB: P026 / D031 / S031
+
+This is your first consultation entirely outside the Sprint-OMS/ETL lineage that has
+produced every prior KB entry. The domain (a physical warehouse Put-to-Light process
+integrating WMS, SAP, a hardware controller, and a Marketplace) shares no vocabulary
+with OMS -- which makes it the clearest test yet of whether the patterns you have been
+building are genuinely internalized or just familiar within one codebase. Here is what
+to study:
+
+**1. The Saga-vs-Choreography Threshold Generalizes Beyond "Service Count"**
+D019 taught you a simple rule: 2 services -> outbox+ACL is enough; 3+ services or
+required automated rollback -> Saga. P026/D031 could not use that rule directly (it
+is not primarily about *how many* systems are involved) -- the real driver was *who is
+allowed to enforce a cross-cutting invariant*. "1 order = 1 box = 1 invoice" and "only
+1 active box per PLT slot" cannot be enforced by any single event listener because no
+single event carries enough context; only a component that sees the whole sequence
+(the saga) can. Practice restating the D019 rule as: "introduce an orchestrator
+wherever an invariant spans more state than any one participant's local event stream
+contains" -- and check that this reformulation still explains the D019 decision too.
+- Study: Chris Richardson, "Microservices Patterns" ch. 4 (Saga) -- specifically the
+  distinction between per-step local transactions and cross-step invariants
+- Practice: For a workflow you own, list every invariant that spans more than one
+  service's local state. For each, ask whether an event consumer could actually check
+  it, or whether it needs a process manager.
+
+**2. Orchestration and Choreography Are Not Mutually Exclusive**
+The chosen design in D031 is not "Saga instead of events" -- it is a saga whose
+messaging *is* an event bus (event-carried state transfer). The orchestrator owns
+decisions (state transitions, compensations); events are just the transport it uses to
+talk to WMS/SAP/PTL/Marketplace. This resolves the false binary that D019's framing
+("choreography vs orchestration") can accidentally imply. Learn to ask two separate
+questions about any integration problem: "who decides?" (orchestration question) and
+"how do systems hear about it?" (transport question) -- they can have different
+answers.
+- Study: Bernd Rücker's writing on "orchestration vs choreography is a false dichotomy"
+  (camunda.com blog); Enterprise Integration Patterns' "Event-Carried State Transfer"
+- Practice: Take a choreographed flow you have built. Identify one invariant it
+  silently cannot enforce today. Would adding a thin orchestrator on top (still using
+  the same events) fix it without a full rewrite?
+
+**3. Synchronous Rejection Needs a Synchronous Owner**
+The "reject mixed-store cartons, don't silently allow" requirement is a concrete,
+memorable example of a constraint that rules out pure choreography: the PTL hardware
+controller needs an answer *now*, not an eventually-consistent correction after the
+fact. Any time a requirement includes the word "return an error" (as opposed to "flag
+for review" or "alert"), check whether your design can actually produce that error
+synchronously, in the same call, or whether you have accidentally designed an
+async-only reaction to something that needed a gate.
+- Practice: Audit one exception-handling requirement in a system you own. Is the
+  current implementation a synchronous gate or an asynchronous reaction? Does the
+  original requirement's wording ("reject", "prevent", "block") match which one you
+  built?
+
+**4. Applying Learned Patterns to an Unfamiliar Domain Is Itself a Skill**
+Every OMS-lineage consultation let you lean on accumulated domain context (order
+aggregates, BU multi-tenancy, gRPC seams already mapped in prior audits). This
+consultation had none of that -- the problem came from an 8-slide PowerPoint extract
+about physical box-picking and light-directed warehouse hardware. Notice that the
+lens-selection and decision-synthesis reasoning (invariant mapping, layer-blending)
+transferred cleanly anyway. This is the concrete evidence the Phase Progression
+Criteria below are asking for: pattern fluency that survives a change of domain, not
+just repetition within one.
+- Practice: Next time you are handed an unfamiliar domain, deliberately list the hard
+  invariants first (before picking a lens) -- as this consultation's problem-analyst
+  step did with the 7 explicit business rules from the spec -- and see whether the
+  lens choice becomes obvious once the invariants are named.
+
+
+---
+
 ## Phase Progression Criteria
 
-- **Foundation → Intermediate:** Can explain 5+ patterns with their tradeoffs; has encountered problems across 3+ distinct domains; no longer needs to look up what a pattern does before engaging with it
-- **Intermediate → Advanced:** Anticipates which lenses will be selected before seeing them; spots org-level and team-topology constraints in problems; can run a design review solo
+- **Foundation → Intermediate:** Can explain 5+ patterns with their tradeoffs; has encountered problems across 3+ distinct domains; no longer needs to look up what a pattern does before engaging with it — **met as of consultation 8 (2026-07-31, P025/D030): 11+ distinct patterns encountered (DDD, CQRS, Outbox, Saga, Strangler Fig, Modular Monolith, Hexagonal, Event-Driven, Layered, Fitness Functions, Service Mesh) across greenfield design, ETL, incident response, database maintenance, and repeat codebase audits**
+- **Intermediate → Advanced:** Anticipates which lenses will be selected before seeing them; spots org-level and team-topology constraints in problems; can run a design review solo — **not yet met; explicit next-step focus is anticipating the layer each lens governs (see Current Focus) before the pipeline output confirms it**

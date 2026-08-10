@@ -50,6 +50,20 @@ BEGIN
 END
 GO
 
+-- 2b) Fixed UTC+7 timestamp helper. Uses SYSUTCDATETIME() + a hard 7-hour
+--     offset rather than SYSDATETIME() so log timestamps stay pinned to
+--     UTC+7 regardless of the server OS's configured time zone.
+IF OBJECT_ID('dbo.fn_LocalTimeUtcPlus7', 'FN') IS NOT NULL
+    DROP FUNCTION dbo.fn_LocalTimeUtcPlus7;
+GO
+CREATE FUNCTION dbo.fn_LocalTimeUtcPlus7()
+RETURNS datetime2(3)
+AS
+BEGIN
+    RETURN DATEADD(HOUR, 7, SYSUTCDATETIME());
+END
+GO
+
 -- 3) Populate the schedule with the VERIFIED real index inventory,
 --    extracted programmatically from inbox/rebuild-index-db/script-rebuild.sql.
 --    195 total ALTER INDEX statements in source; 194 unique (table,index)
@@ -270,7 +284,11 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @RunId     uniqueidentifier = NEWID();
-    DECLARE @Today     tinyint          = DATEPART(dw, GETDATE());
+    -- Fixed UTC+7 clock (not GETDATE()/server-local) -- keeps the window/day
+    -- guard on the same clock as StartedAt/CompletedAt in the log, instead of
+    -- whatever timezone the server OS happens to be configured with.
+    DECLARE @NowLocal  datetime2(3)     = dbo.fn_LocalTimeUtcPlus7();
+    DECLARE @Today     tinyint          = DATEPART(dw, @NowLocal);
     DECLARE @SessionId int              = @@SPID;
 
     -- Tags this session so the audit trail's session_id can be cross-checked
@@ -286,7 +304,8 @@ BEGIN
                         DB_ID(), OBJECT_ID(QUOTENAME(s.SchemaName) + N'.' + QUOTENAME(s.TableName)),
                         NULL, NULL, 'LIMITED') AS ps
         JOIN sys.indexes AS i
-            ON i.object_id = ps.object_id AND i.index_id = ps.index_id AND i.name = s.IndexName
+            ON i.object_id = ps.object_id AND i.index_id = ps.index_id
+               AND i.name = s.IndexName COLLATE DATABASE_DEFAULT
         WHERE s.IsActive = 1
           AND (s.PreferredDow IS NULL OR s.PreferredDow = @Today)
           AND ps.avg_fragmentation_in_percent >= @FragmentationThreshold
@@ -302,7 +321,10 @@ BEGIN
         -- closes. Untouched candidates simply remain fragmented and are picked up
         -- by the *next* scheduled run -- the fragmentation gate itself gives this
         -- "resume" semantics, no separate checkpoint bookkeeping required.
-        IF CAST(GETDATE() AS time) > @WindowEnd
+        -- Re-read the fixed UTC+7 clock each iteration (not GETDATE()) so this
+        -- guard fires against the same clock @WindowEnd was specified in.
+        SET @NowLocal = dbo.fn_LocalTimeUtcPlus7();
+        IF CAST(@NowLocal AS time) > @WindowEnd
         BEGIN
             PRINT 'Maintenance window closed -- remaining candidates deferred to next run.';
             BREAK;
@@ -313,7 +335,7 @@ BEGIN
 
         INSERT INTO dbo.IndexMaintenanceLog
             (RunId, SchemaName, TableName, IndexName, FragmentPercent, StartedAt, SessionId, WasResumable)
-        VALUES (@RunId, @SchemaName, @TableName, @IndexName, @Frag, SYSUTCDATETIME(), @SessionId, @UseResumable);
+        VALUES (@RunId, @SchemaName, @TableName, @IndexName, @Frag, dbo.fn_LocalTimeUtcPlus7(), @SessionId, @UseResumable);
         SET @LogId = SCOPE_IDENTITY();
 
         DECLARE @Sql nvarchar(max) =
@@ -326,7 +348,7 @@ BEGIN
         BEGIN TRY
             EXEC sp_executesql @Sql;
             UPDATE dbo.IndexMaintenanceLog
-               SET CompletedAt = SYSUTCDATETIME(), Status = 'Completed'
+               SET CompletedAt = dbo.fn_LocalTimeUtcPlus7(), Status = 'Completed'
              WHERE LogId = @LogId;
         END TRY
         BEGIN CATCH
@@ -338,7 +360,7 @@ BEGIN
                 CASE WHEN ERROR_NUMBER() IN (1222, 49920) THEN 1 ELSE 0 END;
 
             UPDATE dbo.IndexMaintenanceLog
-               SET CompletedAt = SYSUTCDATETIME(),
+               SET CompletedAt = dbo.fn_LocalTimeUtcPlus7(),
                    Status = CASE WHEN @IsLowPriorityAbort = 1 THEN 'Deferred: low-priority wait exceeded'
                                  ELSE 'Failed: ' + LEFT(ERROR_MESSAGE(), 150) END,
                    AbortedByLowPriority = @IsLowPriorityAbort
@@ -380,7 +402,10 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @RunId     uniqueidentifier = NEWID();
-    DECLARE @Today     tinyint          = DATEPART(dw, GETDATE());
+    -- Fixed UTC+7 clock (not GETDATE()/server-local) -- keeps the window/day
+    -- guard on the same clock as StartedAt/CompletedAt in the log.
+    DECLARE @NowLocal  datetime2(3)     = dbo.fn_LocalTimeUtcPlus7();
+    DECLARE @Today     tinyint          = DATEPART(dw, @NowLocal);
     DECLARE @SessionId int              = @@SPID;
 
     EXEC sp_set_session_context @key = N'MaintenanceRunId', @value = @RunId;
@@ -398,7 +423,8 @@ BEGIN
                         DB_ID(), OBJECT_ID(QUOTENAME(s.SchemaName) + N'.' + QUOTENAME(s.TableName)),
                         NULL, NULL, 'LIMITED') AS ps
         JOIN sys.indexes AS i
-            ON i.object_id = ps.object_id AND i.index_id = ps.index_id AND i.name = s.IndexName
+            ON i.object_id = ps.object_id AND i.index_id = ps.index_id
+               AND i.name = s.IndexName COLLATE DATABASE_DEFAULT
         WHERE s.IsActive = 1
           AND (s.PreferredDow IS NULL OR s.PreferredDow = @Today)
           AND ps.avg_fragmentation_in_percent >= @MinFragmentationThreshold
@@ -411,7 +437,8 @@ BEGIN
 
     WHILE @@FETCH_STATUS = 0
     BEGIN
-        IF CAST(GETDATE() AS time) > @WindowEnd
+        SET @NowLocal = dbo.fn_LocalTimeUtcPlus7();
+        IF CAST(@NowLocal AS time) > @WindowEnd
         BEGIN
             PRINT 'Maintenance window closed -- remaining candidates deferred to next run.';
             BREAK;
@@ -421,7 +448,7 @@ BEGIN
 
         INSERT INTO dbo.IndexMaintenanceLog
             (RunId, SchemaName, TableName, IndexName, FragmentPercent, StartedAt, SessionId, WasResumable)
-        VALUES (@RunId, @SchemaName, @TableName, @IndexName, @Frag, SYSUTCDATETIME(), @SessionId, 0);
+        VALUES (@RunId, @SchemaName, @TableName, @IndexName, @Frag, dbo.fn_LocalTimeUtcPlus7(), @SessionId, 0);
         SET @LogId = SCOPE_IDENTITY();
 
         DECLARE @Sql nvarchar(max) =
@@ -432,12 +459,12 @@ BEGIN
         BEGIN TRY
             EXEC sp_executesql @Sql;
             UPDATE dbo.IndexMaintenanceLog
-               SET CompletedAt = SYSUTCDATETIME(), Status = 'Completed'
+               SET CompletedAt = dbo.fn_LocalTimeUtcPlus7(), Status = 'Completed'
              WHERE LogId = @LogId;
         END TRY
         BEGIN CATCH
             UPDATE dbo.IndexMaintenanceLog
-               SET CompletedAt = SYSUTCDATETIME(),
+               SET CompletedAt = dbo.fn_LocalTimeUtcPlus7(),
                    Status = 'Failed: ' + LEFT(ERROR_MESSAGE(), 150)
              WHERE LogId = @LogId;
         END CATCH
@@ -459,7 +486,7 @@ GO
 -- Verification query for any future P022-style "suspicious audit row":
 -- was a maintenance run active at that timestamp?
 -- SELECT * FROM dbo.IndexMaintenanceLog
--- WHERE '2026-07-29T15:50:07' BETWEEN StartedAt AND ISNULL(CompletedAt, SYSUTCDATETIME())
+-- WHERE '2026-07-29T15:50:07' BETWEEN StartedAt AND ISNULL(CompletedAt, dbo.fn_LocalTimeUtcPlus7())
 --   AND SchemaName = 'dbo' AND TableName = 'SubOrderItem';
 
 -- Monitoring query: candidates repeatedly deferred by low-priority wait timeout --
@@ -467,7 +494,7 @@ GO
 -- a manually scheduled exception rather than assuming it will eventually succeed.
 -- SELECT SchemaName, TableName, IndexName, COUNT(*) AS DeferredCount
 -- FROM dbo.IndexMaintenanceLog
--- WHERE AbortedByLowPriority = 1 AND StartedAt >= DATEADD(day, -14, SYSUTCDATETIME())
+-- WHERE AbortedByLowPriority = 1 AND StartedAt >= DATEADD(day, -14, dbo.fn_LocalTimeUtcPlus7())
 -- GROUP BY SchemaName, TableName, IndexName
 -- HAVING COUNT(*) >= 3
 -- ORDER BY DeferredCount DESC;
