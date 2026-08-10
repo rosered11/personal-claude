@@ -2,7 +2,7 @@
 **Goal:** Backend Developer → Software Architecture Specialist
 **Current Phase:** Intermediate
 **Last Updated:** 2026-08-10
-**Consultation Count:** 9
+**Consultation Count:** 11
 
 ---
 
@@ -24,6 +24,49 @@ same "blend by layer, not by picking a winner" skill from D030 (Hexagonal + Serv
 Mesh), now demonstrated a second time with a completely different lens pair -- that
 repetition across unrelated domains is the real signal this reasoning pattern has been
 internalized, not just memorized for one system.
+
+
+Consultation 10 (P027/D032, 2026-08-10) is your first RFID-domain consultation --
+a sub-problem of an already-built RFID Event Platform whose base architecture had
+never itself received a formal KB entry. You correctly treated the "Clarified
+Scope" section as pre-decided constraints (manifest-based check, not global
+registry; must support both intra-site and inter-site movement) rather than
+re-litigating them, and picked Domain-Driven Design vs Event-Driven Architecture --
+a pairing whose contrast this time was not "orchestration vs choreography"
+(D031's framing) but "who owns the zero-loss invariant vs how does the manifest
+physically get to the right edge in time." DDD won as primary because zero-loss
+is exactly the kind of constraint that needs one aggregate whose Close() method
+can refuse to complete if any read went unevaluated -- no event listener,
+however well-designed, can offer that guarantee on its own. Event-Driven's
+manifest pre-positioning insight was folded in as the transport, not rejected,
+extending the "blend by concern, not by picking a winner" skill first seen in
+D030 (Hexagonal + Service Mesh, by layer) and D031 (Saga + events, by decision
+vs transport) into a third distinct domain and a third distinct kind of split
+(invariant-ownership vs distribution-timing). Next step: notice that all three
+blends (D030, D031, D032) share one underlying question -- "which of these two
+lenses can make a promise the other cannot?" -- and try naming that promise
+explicitly, before the pipeline runs, next time two lenses are proposed.
+
+Consultation 11 (P028/D033, 2026-08-10) is your second RFID-domain consultation, and
+the first time a lens pair was chosen specifically to illuminate a *transport/protocol*
+decision rather than an invariant-ownership or coupling decision: Event-Driven
+Architecture (extend the platform's broker fabric across the WAN) vs Hexagonal
+Architecture (a single stateless HTTPS port as the edge-facing boundary). Unlike D032's
+blend (DDD owns the invariant, EDA is folded in as transport), here EDA itself was the
+option not chosen -- its proposed transport (persistent per-site broker sessions) was in
+direct structural tension with two hard constraints (statelessness at scale, firewall
+traversal across thousands of retail sites), not merely a stylistic tradeoff. This is a
+sharper version of the "which lens can make a promise the other cannot" question you
+named as your own next step after D032: Hexagonal could promise both zero per-client
+session state and default-open firewall traversal; EDA could not promise either without
+extra infrastructure. EDA's reliability instinct (at-least-once, idempotent event_id)
+was still folded in -- as the platform's already-existing *internal* publish pipeline,
+completely decoupled from the WAN hop's protocol. Next step: notice that Hexagonal has
+now won as primary lens for three structurally different reasons across three
+consultations -- a secrets-rotation seam (D030), a service-boundary port (D029), and now
+an edge-facing transport-protocol boundary (D033) -- and try to name, before the next
+consultation, what these three all have in common (hint: each is a place where something
+volatile and *external* to the core meets something that must stay stable).
 
 ## Skill Domains
 
@@ -47,14 +90,15 @@ internalized, not just memorized for one system.
 - [ ] Caching layers: CDN, application, database
 - [x] API gateway patterns — **encountered in D023 (YARP Gateway + channel-based BFFs proposed as the facade layer in a Strangler Fig migration; the gateway ships before any internal boundary rewrite, not after)**
 - [ ] Service discovery and health checking
+- [x] Transport protocol selection at a WAN/edge boundary — choosing between extending a message-broker fabric vs. a stateless synchronous API port, decided primarily by operational constraints (per-client session state, firewall/proxy traversal at scale) rather than raw feature richness — first evaluated in D033 (RFID edge-to-Ingestion-Service WAN hop)
 
 ### Architectural Patterns (Structural)
-- [x] Hexagonal Architecture (Ports & Adapters) — **evaluated in D022 (FMSUpdateAdapter); rejected for a single-adapter fix in favor of Layered private helper, but the port/adapter framing was used to diagnose the correctness boundary. Won outright in D024 (IOrderPersistenceGateway) as the primary lens — first time Hexagonal was chosen as the winning option, not just a diagnostic frame. Reinforced in D029 (service-boundary ports) and extended into a new application area in D030 — a Hexagonal port (ISecretProvider) used as a *secrets rotation seam*, not just a service-boundary decoupling mechanism**
+- [x] Hexagonal Architecture (Ports & Adapters) — **evaluated in D022 (FMSUpdateAdapter); rejected for a single-adapter fix in favor of Layered private helper, but the port/adapter framing was used to diagnose the correctness boundary. Won outright in D024 (IOrderPersistenceGateway) as the primary lens — first time Hexagonal was chosen as the winning option, not just a diagnostic frame. Reinforced in D029 (service-boundary ports) and extended into a new application area in D030 — a Hexagonal port (ISecretProvider) used as a *secrets rotation seam*, not just a service-boundary decoupling mechanism** — extended again in D033 (RFID Ingestion batch API): a Hexagonal port used as an *edge-facing transport-protocol boundary*, chosen specifically because it could satisfy statelessness and firewall-traversal constraints that the alternative (extending the message bus across the WAN) could not**
 - [x] Service Mesh (sidecar proxy pattern) — mTLS, transport-level retry/circuit-breaking, and centralized observability with zero application code changes — **first evaluated in D030 (Istio/Linkerd PERMISSIVE-mode proposal for the Sprint-OMS gRPC fabric). Not chosen as primary because it cannot fix compile-time coupling or plaintext secrets (application-layer concerns), but its one urgent, code-fixable finding — disabled TLS certificate validation — was folded into the winning Hexagonal solution as an interim fix; full mesh adoption deferred to an explicit Phase-2 track pending external K8s sidecar-injection infrastructure. Key lesson: know the mesh's scope boundary before proposing it**
 - [x] Saga Pattern — distributed transaction coordination — **evaluated in D019 (Returns flow); rejected for 2-service case in favor of outbox+ACL; understand when Saga is warranted (3+ services) vs overkill**
 - [x] Saga Pattern — won outright as the *primary* lens for the first time in D031 (PTL Task Orchestrator), in a domain with no relationship to OMS; the threshold that mattered here was not service count but "who enforces the cross-cutting invariants" (1 order=1 box=1 invoice, single active box per slot, mixed-carton rejection) — a generalization of the D019 threshold rule beyond service-count alone
 - [x] Strangler Fig — incremental legacy migration — **encountered in D023 (facade-first: ship Gateway/BFF/OTel in front of the coupled Order.API immediately, then strangle Order-to-Master/Portal project references one seam at a time via a feature-flagged legacy-vs-HTTP port, instead of a big-bang network-boundary rewrite)**
-- [x] Domain-Driven Design: bounded contexts, aggregates, ubiquitous language — **encountered in D018 (Order aggregate root, state machine, Anti-Corruption Layers, RolloutPolicy domain service) and D019 (Package value object, PreHoldState snapshot, Returns sub-machine invariants)**
+- [x] Domain-Driven Design: bounded contexts, aggregates, ubiquitous language — **encountered in D018 (Order aggregate root, state machine, Anti-Corruption Layers, RolloutPolicy domain service) and D019 (Package value object, PreHoldState snapshot, Returns sub-machine invariants)** Extended in D032 (GateSession aggregate): DDD applied outside greenfield OMS for the first time -- the aggregate here exists purely to make a code-level invariant (zero-loss) impossible to violate, not to model a rich business lifecycle.
 - [x] Modular Monolith — module boundary enforcement, schema isolation, future service extraction path — **encountered in D020 (4-module OMS: Order/Payment/Returns/Configuration with separate PostgreSQL schemas, ID-only cross-module access, ACL adapters as boundary contracts)**
 - [x] Architecture fitness functions — automated, CI-enforced tests of structural rules (e.g. dependency direction) — **first produced in D029/S029 (NetArchTest suite forbidding a service's Core project from depending on another service's Infrastructure/Integration assembly, seeded with a shrink-only allow-list of the exact P024 violations)**
 
@@ -64,6 +108,8 @@ internalized, not just memorized for one system.
 - [x] Dead letter queues and poison pill handling — **encountered as a gap in D024 (production behavior was "skip after 1 retry" with no DLQ, meaning failed order events were silently dropped); DLQ + alerting adopted as a required companion to the primary fix, not optional**
 - [x] Choreography vs. orchestration — **actively evaluated in D019: Returns flow uses choreography (outbox+ACL) rather than orchestration (Saga) — understand the threshold (service count, failure isolation requirements) that tips the balance**
 - [x] Event-carried state transfer as a saga's transport layer — encountered in D031: the saga (orchestration) still communicates over an async event bus (StockUpdated, PtlTaskConfirmed, SoStoCreated), showing choreography and orchestration are not mutually exclusive — events can be the *medium* while a saga remains the *decision-maker*
+- [x] Manifest/state pre-positioning — publishing data ahead of a physical event so an edge/consumer already has what it needs when the event occurs, rather than fetching synchronously at decision time — first named explicitly in D032 (RFID manifest.created published to the destination site before goods physically arrive, consumed into a local read-model an aggregate evaluates against)
+- [x] Recognizing EDA's scope limits, not just its strengths — in D033, extending the platform's broker fabric across a WAN to thousands of edge sites was evaluated and rejected as the primary transport (not because at-least-once/ordered-replay was wrong, but because persistent per-site broker sessions reintroduce per-client state and raise real firewall-traversal risk); EDA's reliability instincts were still reused, but only as the *internal* publish pipeline, never exposed across the WAN hop itself
 - [x] Outbox pattern — **encountered in D018 (reliable Sprint Connect event delivery); extended in D019 (new domain events for Returns, OnHold, PackageLost dispatched through same outbox table)**
 
 ### Security & Secrets Management
@@ -154,6 +200,13 @@ internalized, not just memorized for one system.
 | Event-carried state transfer as saga transport — an orchestrator can use an async event bus for I/O while remaining the sole decision-maker for cross-cutting invariants | 2026-08-10 | P026/D031/S031 | Event-Driven Architecture | High |
 | Synchronous rejection vs eventual-consistency reaction — a hardware controller needing an immediate error (mixed-store carton) cannot be served by a pure event listener, only by a synchronous call into the orchestrator | 2026-08-10 | P026/D031 | Distributed Systems | Medium |
 | Cross-domain lens reuse — applying an OMS-learned lens pairing (Saga vs Event-Driven) to a warehouse/hardware-integration domain with zero shared vocabulary, confirming the reasoning generalizes rather than being domain-specific | 2026-08-10 | P026/D031 | Organizational & Communication Skills | High |
+| Aggregate as invariant-enforcer, not just lifecycle model — GateSession's only job is to make "every EPC must get a verdict" impossible to violate in code (Close() throws otherwise), a narrower and more targeted use of DDD than the rich Order aggregates in D018/D019 | 2026-08-10 | P027/D032/S032 | Architectural Patterns | High |
+| Event-carried state transfer as pre-positioning, not just notification — manifest.created is published ahead of the physical transfer so the destination edge already holds the data it needs when the gate event happens, distinct from D031's use of events as after-the-fact status notification | 2026-08-10 | P027/D032/S032 | Event-Driven Architecture | High |
+| Explicit, auditable fail-safe mode as a first-class field — FailSafeMode (Verified/FailOpen/FailClosed) is resolved once and stamped on every verdict, turning "what do we do when we can't verify" from an implicit runtime accident into a visible, queryable decision | 2026-08-10 | P027/D032/S032 | System Design Fundamentals | High |
+| Blend-by-concern applied a third time in a third domain (invariant-ownership vs distribution-timing), reinforcing that this is a general architectural reasoning skill, not a one-off insight tied to Sprint-OMS or PTL | 2026-08-10 | P027/D032 | Architectural Patterns | High |
+| Hexagonal port applied to a transport-protocol boundary — a stateless HTTPS batch API chosen as "the only edge-facing surface" specifically because it satisfies statelessness and firewall-traversal constraints a broker-based alternative could not | 2026-08-10 | P028/D033/S033 | Architectural Patterns | High |
+| EDA evaluated and rejected as a primary transport, not just folded in — persistent per-site broker sessions over a WAN put statelessness and firewall-traversal constraints in direct structural tension, distinct from every prior D030/D031/D032 case where EDA was the winning or complementary transport | 2026-08-10 | P028/D033 | Event-Driven Architecture | High |
+| Operational constraints (firewall/proxy traversal, per-client session state at fleet scale) as the deciding factor in a protocol choice, ahead of raw feature richness | 2026-08-10 | P028/D033 | System Design Fundamentals | High |
 
 ---
 
@@ -649,6 +702,140 @@ just repetition within one.
   step did with the 7 explicit business rules from the spec -- and see whether the
   lens choice becomes obvious once the invariants are named.
 
+
+### Consultation: RFID Gate Transfer Verification (2026-08-10) -- KB: P027 / D032 / S032
+
+This is your first RFID-domain consultation, and the first KB entry for an
+already-built platform (the RFID Event Platform) that had never itself received
+a formal architecture consultation -- you were extending a live system from its
+own documented design principles, not designing greenfield or auditing an
+unknown codebase. Here is what to study:
+
+**1. An Aggregate Can Exist Purely to Enforce One Invariant**
+Every prior DDD aggregate in your KB (Order in D018/D019) modeled a rich
+business lifecycle with many states and behaviors. GateSession is narrower and,
+in some ways, more instructive: its entire reason to exist is to make one
+sentence -- "every EPC read must be evaluated before the session can close" --
+impossible to violate in code. `Close()` throws if any EPC lacks a verdict.
+This is DDD used as a correctness mechanism, not a modeling exercise. Learn to
+recognize when a requirement is really a hard invariant in disguise ("must
+never lose a tag") and ask whether an aggregate boundary, not just a validation
+check, is the right place to enforce it.
+- Study: Vaughn Vernon, "Implementing DDD" ch. 10 (aggregate invariants and
+  transactional boundaries); Eric Evans' original framing of aggregates as
+  consistency boundaries, not just object clusters
+- Practice: Find one "must never X" requirement in a system you own that is
+  currently enforced by convention or code review. Could an aggregate method
+  make violating it a compile-time or runtime impossibility instead?
+
+**2. Pre-Positioning: Using Events to Arrive Before the Physical Event, Not After**
+Every prior use of events in your KB (Outbox in D018, DLQ in D024, saga
+transport in D031) modeled events as *reactions* to something that already
+happened. D032 uses events differently: `manifest.created` is published when a
+movement round is *planned*, deliberately ahead of the goods physically
+leaving, so the destination edge already has what it needs by the time the
+gate event occurs. This is the same idea as CDN cache warming or DNS
+pre-fetching, applied to a physical logistics event instead of a web request.
+- Study: Enterprise Integration Patterns' "Event-Carried State Transfer" (again,
+  but now contrast the *timing* -- pre-positioned vs reactive); any offline-first
+  mobile sync design that pre-fetches data before a predictable state change
+- Practice: In a system you own, find one place where a consumer currently
+  fetches data synchronously right before it is needed. Could the producer
+  instead push that data earlier, based on a predictable upstream signal?
+
+**3. Fail-Safe Policy as Data, Not Behavior**
+The requirement "decide fail-open or fail-closed when you can't verify" could
+have been implemented as an if/else buried in the evaluation method. Instead,
+D032 resolves `FailSafeMode` once, at session open, and stamps it on every
+verdict as an explicit field. The result: a fail-open pass is never
+indistinguishable from a verified pass in the data -- you can query "how many
+passes this month ran unverifiable" without re-deriving it from logs. This is
+the same discipline as D030's `ISecretProvider` seam: make an operational
+policy an explicit, inspectable value, not an implicit code path.
+- Study: "Making Illegal States Unrepresentable" (a recurring functional-design
+  idea -- if a state is possible, model it explicitly rather than inferring it)
+- Practice: Find one place in a system you own where an exception-handling
+  policy (retry vs fail, allow vs block) is implicit in control flow. Could you
+  hoist it into an explicit, loggable field instead?
+
+**4. Extending a Live Platform From Its Own Stated Design Principles**
+Unlike a greenfield design or a from-scratch audit, this consultation's
+"Clarified Scope" section had already answered several architecture questions
+(manifest-based, not registry-based; must reuse existing patterns) before the
+pipeline ran. The discipline here was recognizing which parts were genuinely
+open (how to model the invariant, how to distribute the manifest) versus which
+parts were already decided and should not be re-argued. Practice separating
+"constraints I must design within" from "constraints I get to choose" as the
+very first step of any consultation on an existing system.
+- Practice: Next time you inherit a spec with a "decided" section, write down
+  explicitly which of your own instincts it overrides, and why you are
+  deferring to it rather than proposing an alternative.
+
+---
+
+### Consultation: RFID Ingestion Service WAN Transport Protocol Selection (2026-08-10) -- KB: P028 / D033 / S033
+
+This is your second RFID-domain consultation, and the first where the deciding question
+was not "who owns an invariant" but "which side of a WAN boundary should carry which
+kind of state." Here is what to study:
+
+**1. A Lens Can Be Evaluated in Depth and Still Lose Outright**
+Every prior blended decision in your KB (D024, D030, D031, D032) folded the
+non-primary lens's insight into the winner. D033 is your first case where the
+non-primary lens's *core proposed mechanism* (a persistent broker session over the
+WAN) was evaluated seriously and then explicitly rejected as unfit for two hard
+constraints (statelessness, firewall traversal) -- only its narrower reliability
+insight (at-least-once, idempotent event_id) survived, repositioned as an *internal*
+concern the winning option never had to touch. Learn to separate "this lens's overall
+proposed mechanism" from "this lens's underlying values" -- you can keep the values
+while rejecting the mechanism.
+- Study: Mark Richards & Neal Ford, "Fundamentals of Software Architecture" ch. 17
+  (architecture decision records) -- specifically how to document a rejected option's
+  *partial* validity, not just a binary win/lose
+- Practice: Next time two lenses are proposed, before reading the decision, ask
+  separately: "what does each lens want to be true?" and "what mechanism does each
+  lens propose to make it true?" -- then check whether you can accept the first while
+  rejecting the second.
+
+**2. Protocol Choice Is an Architecture Decision, Not an Implementation Detail**
+It would have been easy to treat "REST vs MQTT vs gRPC" as a downstream engineering
+choice made after "the architecture" was decided. D033 treats it as the architecture
+decision itself, because the constraint set (statelessness at fleet scale, firewall
+traversal across thousands of retail sites) is exactly the kind of non-functional
+requirement that architecture, not implementation, is responsible for satisfying.
+Whenever a "just pick a protocol" question surfaces, check first whether it is
+actually gating a hard operational constraint -- if so, it deserves the same lens-pair
+rigor as any other architectural decision.
+- Study: Michael Nygard, "Release It!" ch. 5 (stability patterns) for how connection
+  and session models interact with fleet-scale failure modes
+- Practice: For an integration you own, list every persistent connection/session your
+  system holds against external parties. For each, ask: does this scale linearly with
+  client count, and is that a state footprint anyone has actually sized?
+
+**3. Firewall/Proxy Reality Is a First-Class Architectural Constraint**
+The decisive evidence against the broker-based option was not a performance number --
+it was an operational fact about retail store networks (broker ports are commonly
+blocked or require special allowances; HTTPS/443 is not). This is a category of
+constraint you have not weighted heavily before: not CAP-theorem tradeoffs, not team
+size, but literal network-policy reality at the physical sites your system must run
+in. Senior architects treat "will this actually get through the customer's firewall"
+as seriously as any theoretical scalability argument.
+- Practice: For a system you own that talks to external or field-deployed clients,
+  find out (don't assume) which outbound ports/protocols those networks actually
+  allow by default. Would your current design survive if a new site's firewall
+  policy were maximally restrictive?
+
+**4. Reusing a Platform's Own Self-Description as the Architecture**
+The RFID platform's own spec already called the Ingestion Service "the only
+edge-facing surface" -- language that is, in effect, already describing a Hexagonal
+port, even though no one had framed it that way. D033's real work was recognizing
+that an existing informal description already implied a formal pattern, then making
+that implicit boundary protocol-concrete. This is a different skill from applying a
+pattern to greenfield code: it is *noticing* that a system's own vocabulary has
+already committed to a pattern before you arrive.
+- Practice: Re-read a design doc or README for a system you did not build. Find one
+  sentence that is already describing a named architectural pattern in plain
+  language, without using the pattern's name.
 
 ---
 

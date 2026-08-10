@@ -9,3 +9,4 @@
 - [Hexagonal .NET Distributed Monolith](hexagonal_dotnet_distributed_monolith.md) — verify ProjectReferences directly; Contracts-assembly extraction pattern for Sprint-OMS-style audits
 - [Secrets as Port](secrets_as_port.md) — model committed plaintext secrets as ISecretProvider port+adapter, not just a rotation bullet
 - [Warehouse/PTL Context](warehouse_ptl_context.md) — CMG Put-to-Light domain facts, hard invariants, and why they push toward Saga over pure choreography; stack-default caveat.
+- [RFID Event Platform Context](rfid_context.md) — SCM IT RFID platform domain facts, existing design principles (cache-only, no sync registry calls), hard invariants that push gate-verification problems toward a DDD aggregate.

@@ -66,3 +66,34 @@ Rule for future warehouse/PTL/hardware-integration problems:
   Fold Event-Driven's transport insight (async event bus / event-carried state
   transfer) into the Saga option as its I/O layer rather than treating the two lenses
   as fully mutually exclusive -- see D031 for the precedent write-up of this blend.
+
+- P027/D032 (RFID gate transfer verification -- unregistered-tag detection at gate for
+  intra-site and inter-site warehouse movement, extending the existing RFID Event
+  Platform): Domain-Driven Design vs Event-Driven Architecture -- DDD won as primary
+  (GateSession aggregate owns the zero-loss invariant: Close() throws unless every
+  recorded EPC has a verdict; also owns fail-safe-mode as an explicit auditable field),
+  Event-Driven Architecture folded in as the manifest-distribution transport
+  (manifest.created published ahead of physical transfer, partitioned by destination
+  site_id, consumed into a local read-model before the gate event occurs --
+  "pre-positioning", not just after-the-fact notification). Third KB entry entirely
+  outside OMS/ETL, and distinct from the PTL lineage despite sharing the
+  warehouse-management tag -- pair selection was driven by the problem's own zero-loss/
+  zero-delay/fail-safe constraints and the already-decided Clarified Scope, not by any
+  KB reuse-avoidance signal (kb-search overlap was ~0.06, not meaningful).
+
+Rule for future RFID/edge-gate/tag-verification problems:
+- Use Domain-Driven Design vs Event-Driven Architecture when the problem's hard
+  constraints include (a) a "must never lose/skip an item" completeness invariant that
+  needs one code-level place to enforce it, and (b) a distribution-timing problem (data
+  must arrive at a remote edge before a physical event occurs, without a synchronous
+  call). DDD owns the invariant (aggregate boundary + guarded state transition);
+  Event-Driven Architecture owns getting the data to the right place in time
+  (pre-positioning via existing canonical topics) -- same "decision vs transport" blend
+  established for Saga vs Event-Driven (P026/D031) and Hexagonal vs Service Mesh
+  (P025/D030), now a third recurring instance of the pattern.
+- Do not assume PTL's Saga-vs-Event-Driven pairing applies to RFID/edge-gate problems
+  just because both are warehouse-adjacent -- Saga is for orchestrating invariants that
+  span *multiple external systems of record* (WMS/SAP/PTL/Marketplace); RFID gate
+  problems so far are invariants owned *within a single platform's own service*
+  (Event Processor), which is a DDD aggregate question, not a cross-system orchestration
+  question.

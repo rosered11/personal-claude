@@ -34,6 +34,8 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [P024](problems/P024-oms-distributed-monolith-coupling-audit.md) | OMS Codebase Audit -- Distributed Monolith Coupling Behind a Microservices Deploy Topology | oms, architecture-audit, vibe-coding, service-boundary-violation, modular-monolith, testability, dotnet, grpc | high | D029 | S029 |
 | [P025](problems/P025-oms-architecture-audit-ai-vibe-coding.md) | OMS Architecture Audit After AI Vibe-Coding | architecture-audit, distributed-monolith, microservices, grpc, secrets-management, dotnet, vibe-coding, technical-debt | high | D030 | S030 |
 | [P026](problems/P026-ptl-manual-file-integration-to-api-driven-orchestration.md) | PTL Warehouse Integration -- Replace Manual Excel/File Exchange with API-Driven Task Orchestration | warehouse-management, put-to-light, wms-sap-integration, mhe-plc-integration, api-integration, partial-fulfillment, task-orchestration, exception-handling | high | D031 | S031 |
+| [P027](problems/P027-rfid-gate-transfer-manifest-verification.md) | RFID Gate Transfer Verification -- Manifest-Based Unregistered Tag Detection for Intra-Site and Inter-Site Movement | rfid, edge-computing, gate-verification, manifest-sync, offline-first, warehouse-management, inter-site-transfer, event-driven-architecture, fail-safe, real-time | high | D032 | S032 |
+| [P028](problems/P028-rfid-ingestion-wan-transport-protocol-selection.md) | RFID Ingestion Service -- Edge-to-Platform WAN Transport Protocol Selection | rfid, edge-computing, offline-first, transport-protocol, batch-processing, idempotency, horizontal-scaling, wan-integration | high | D033 | S033 |
 
 ---
 
@@ -72,6 +74,8 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [D029](decisions/D029-oms-hexagonal-ports-fitness-function-boundary-enforcement.md) | Hexagonal Ports at Existing Cross-Service Seams + CI-Enforced Boundary Fitness Function | Hexagonal ports at confirmed crossing points, strangled seam-by-seam (D023 lineage), enforced via NetArchTest CI fitness function | P024 | oms, architecture-audit, hexagonal-architecture, strangler-fig, service-boundary-violation, modular-monolith, testability, dotnet, grpc | S029 |
 | [D030](decisions/D030-oms-hexagonal-contracts-secrets-port-grpc-tls-hardening.md) | Hexagonal Contracts Extraction + ISecretProvider Port, with Interim gRPC TLS Hardening and Service Mesh as Phase 2 | Extract per-service Contracts/adapter assemblies with an ISecretProvider port (Hexagonal), interim gRPC cert-validation hardening folded in, Service Mesh mTLS/resilience routed as a parallel Phase-2 track | P025 | architecture-audit, distributed-monolith, microservices, grpc, secrets-management, dotnet, vibe-coding, technical-debt, hexagonal-architecture, service-mesh | S030 |
 | [D031](decisions/D031-ptl-saga-orchestrated-task-lifecycle-event-driven-backbone.md) | PTL Task Saga -- Orchestrated Process Manager over an Event-Carried State Backbone | Orchestrated Saga (PTL Task Orchestrator) with event-bus transport for WMS/SAP/PTL/Marketplace notifications | P026 | warehouse-management, put-to-light, saga-pattern, event-driven-architecture, wms-sap-integration, mhe-plc-integration, partial-fulfillment, exception-handling | S031 |
+| [D032](decisions/D032-rfid-gatesession-ddd-manifest-eda-prepositioning.md) | GateSession Domain Aggregate Enforcing Zero-Loss/Fail-Safe Manifest Evaluation, Fed by Event-Pre-Positioned Manifest Cache | GateSession Domain Aggregate (DDD) enforcing zero-loss/fail-safe manifest evaluation, fed by event-pre-positioned manifest cache (EDA transport) | P027 | rfid, edge-computing, gate-verification, manifest-sync, domain-driven-design, event-driven-architecture, offline-first, fail-safe, warehouse-management | S032 |
+| [D033](decisions/D033-rfid-hexagonal-https-batch-ingestion-port.md) | Stateless HTTPS/mTLS Batch Ingestion API (Hexagonal Port) as the Edge-to-Central WAN Transport, with At-Least-Once EDA Publish Folded In | Stateless HTTPS/mTLS batch ingestion API (Hexagonal port) as WAN transport; internal EDA publish pipeline unchanged | P028 | rfid, edge-computing, offline-first, transport-protocol, hexagonal-architecture, event-driven-architecture, batch-processing, idempotency, horizontal-scaling | S033 |
 
 ---
 
@@ -106,6 +110,8 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [S029](snippets/S029-netarchtest-service-boundary-fitness-function/) | NetArchTest Service-Boundary Fitness Function | C# | P024 | D029 |
 | [S030](snippets/S030-secretprovider-port-grpc-cert-validation-hardening/) | ISecretProvider Port + Interim gRPC Certificate-Validation Hardening | C# | P025 | D030 |
 | [S031](snippets/S031-ptl-task-saga-orchestrator/) | PTL Task Saga Orchestrator -- State Machine + Mixed-Carton Rejection + Allocation-vs-Stock Hold + Partial SO/STO | C# | P026 | D031 |
+| [S032](snippets/S032-rfid-gatesession-manifest-cache/) | GateSession Domain Aggregate + Event-Pre-Positioned Manifest Cache | C# | P027 | D032 |
+| [S033](snippets/S033-rfid-ingestion-http-batch-port/) | Stateless HTTPS Batch Ingestion Port + Edge Offline-Buffer Client | C# | P028 | D033 |
 
 ---
 
@@ -150,3 +156,64 @@ invariant enforcement. S031 ships a PtlTaskSaga state machine (C#, no MediatR/
 AutoMapper per repo standard) demonstrating synchronous mixed-carton rejection,
 two-directional allocation-vs-stock hold, and idempotency-keyed partial SO/STO
 creation.
+
+_Also 2026-08-10 -- added P027/D032/S032 from inbox/RFID/gate-transfer-verification-req.md
+(a sub-problem of the RFID Event Platform, whose base architecture -- documented in
+inbox/RFID/docs/* and summarized in manual/rfid-architecture-summary.md -- has never had
+a formal KB consultation of its own). Problem: business needs gate-level detection of
+unregistered/unexpected RFID tags during internal warehouse movement (intra-DC
+zone-to-zone) and inter-site transfer (DC->DC, DC->Store), matching each gate pass
+against a manifest scoped to that specific movement round (explicitly NOT a global
+registry check, per the Clarified Scope section, which was treated as already-decided
+and not re-litigated), with zero-delay (edge-local decision only) and zero-loss (every
+scanned EPC must be evaluated) requirements. kb-search against the existing 26 entries
+found only ~0.06 overlap (a single shared generic tag, warehouse-management, against
+P026) -- not a meaningful precedent -- so this correctly became a new CREATE-mode record
+establishing the RFID Event Platform's first formal KB anchor, distinct from the PTL
+warehouse lineage (P026/D031/S031) despite both being warehouse-domain. lens-determiner
+paired Domain-Driven Design against Event-Driven Architecture: DDD won as the primary
+lens because the zero-loss and fail-safe-policy constraints require a single, testable
+place that owns the invariant ("every EPC read must get a verdict before a gate session
+can close"), which no event consumer alone can guarantee; Event-Driven Architecture's
+manifest pre-positioning insight (publish manifest.created partitioned by destination
+site_id, consumed ahead of physical arrival by the destination edge -- the same pattern
+already used for serial-range pre-allocation and Site & Config's heartbeat-pushed config)
+was folded in as the transport layer that feeds the DDD aggregate's local cache, rather
+than rejected -- the same "who decides vs how data arrives" blend already demonstrated in
+D031 (Saga + event transport) and D030 (Hexagonal + Service Mesh by layer), now applied a
+third time in a third distinct domain. S032 ships a GateSession aggregate (C#, no
+MediatR/AutoMapper per repo standard) whose Close() throws unless every recorded EPC has
+a verdict, plus a ManifestSyncConsumer demonstrating the event-driven pre-positioning
+half of the decision.
+
+_Also 2026-08-10 -- added P028/D033/S033 from inbox/RFID/ingestion-transport-protocol-req.md
+(the second formal RFID Event Platform consultation, after P027/D032/S032). Problem: the
+platform spec fully documents Ingestion Service *behavior* (envelope validation, event_id
+idempotency/dedupe for offline replay, stateless horizontal scaling for 7.7/11.11 peaks) and
+edge *behavior* (batch send with edge-generated event_id, offline buffering) but never names a
+transport protocol for the edge (DC Site Server / Store Gateway) -> central Ingestion Service
+WAN hop -- the only MQTT reference in the spec is scoped to a different hop entirely (local
+reader -> edge agent, inside one site's LAN, a vendor acceptance boundary), so nothing in the
+existing documentation constitutes an implicit choice for this hop. kb-search found P027 as the
+only meaningful precedent (overlap_score ~0.3 on rfid/edge-computing/offline-first -- same
+platform, different problem), correctly producing a new CREATE-mode record rather than an update
+to P027/D032. lens-determiner paired Event-Driven Architecture against Hexagonal Architecture --
+a pairing not previously used in this KB, and deliberately not a repeat of P027/D032's DDD+EDA
+pairing, since this problem is fundamentally a transport/integration-boundary decision rather
+than an invariant-ownership one. EDA proposed extending the platform's broker fabric (MQTT/AMQP)
+across the WAN with broker-native persistent sessions for offline buffering and ack; Hexagonal
+proposed a stateless HTTPS/mTLS batch API as a single explicit "driving port," matching the
+spec's own description of the Ingestion Service as "the only edge-facing surface." Hexagonal won
+as primary because the Clarified Scope's hardest constraints -- no per-client session state at
+any scale, and reliable firewall/proxy traversal across a large number of geographically
+distributed retail and warehouse sites -- put EDA's persistent-broker-session approach in direct,
+structural tension with the requirements, not just at a stylistic disadvantage; EDA's reliability
+instincts (at-least-once, idempotent event_id) were folded in as the internal publish pipeline
+the platform already runs, entirely decoupled from this hop's protocol choice, rather than
+rejected. gRPC streaming, named as a candidate in the original problem, was noted and set aside
+rather than developed as a third lens, since it shares EDA's core weakness for this hop (a
+long-lived connection poorly handled by corporate/retail proxies) without adding benefit for a
+batch-oriented, WAN-latency-tolerant workload. S033 ships an ASP.NET Core batch ingestion
+endpoint (C#, no MediatR/AutoMapper per repo standard) with per-event_id synchronous acks, paired
+with an edge-side EdgeIngestionClient that only purges its offline buffer on explicit
+server-confirmed event_ids.

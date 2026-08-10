@@ -124,3 +124,36 @@ since the two lenses are complementary at different layers (decision vs. transpo
 the same pattern already established for Hexagonal vs Service Mesh above.
 
 **KB precedent:** D031 (PTL Task Saga, first non-OMS domain in this KB)
+
+## Invariant Ownership vs Distribution Timing (DDD vs Event-Driven)
+
+**Applies to:** Edge/gate-verification problems where a completeness invariant ("every
+scanned/read item must be evaluated, none may be dropped") must be enforced locally and
+in real time, and the data needed for that evaluation (a manifest, an expected-item
+list) must reach the right edge before a physical event occurs.
+
+- DDD-style options (an aggregate like GateSession) centralize *who enforces the
+  invariant*: a guarded state transition (e.g. Close() throws unless every recorded item
+  has a verdict) makes the completeness guarantee a code-level fact, not a convention
+  every edge implementation has to separately get right.
+- Event-Driven options centralize *how the data arrives in time*: publishing the
+  expected-item list as soon as it is known (pre-positioning), ahead of the physical
+  event, reusing existing canonical topics/partitioning/idempotency rather than a new
+  synchronous call.
+- These are usually **complementary, not competing** — the aggregate still needs a
+  locally-cached read-model to evaluate against, and that read-model still needs a
+  distribution mechanism. Rejecting either one outright typically means quietly
+  re-implementing it under a different name (an aggregate with no data source, or an
+  event consumer that silently becomes the invariant-enforcer by accretion).
+
+**Resolution rule:** When the problem has both (a) a hard completeness/loss-prevention
+invariant and (b) a cross-site or cross-process data-timing problem, pick the DDD
+aggregate as the primary/chosen decision-maker for the invariant, and fold the
+Event-Driven option in as the aggregate's data-feed/transport rather than treating them
+as mutually exclusive. This is the same "decision vs transport" split as the Saga vs
+Event-Driven resolution above (P026/D031) and the same "which layer does this lens
+govern" split as Hexagonal vs Service Mesh (P025/D030) -- a third recurring instance of
+blending two lenses by concern rather than picking one winner.
+
+**KB precedent:** D032 (RFID GateSession aggregate + manifest pre-positioning, first
+RFID Event Platform entry)
