@@ -1,8 +1,8 @@
 # Architecture Transition Roadmap
 **Goal:** Backend Developer → Software Architecture Specialist
 **Current Phase:** Intermediate
-**Last Updated:** 2026-08-10
-**Consultation Count:** 11
+**Last Updated:** 2026-08-17
+**Consultation Count:** 12
 
 ---
 
@@ -68,10 +68,36 @@ an edge-facing transport-protocol boundary (D033) -- and try to name, before the
 consultation, what these three all have in common (hint: each is a place where something
 volatile and *external* to the core meets something that must stay stable).
 
+Consultation 12 (P029/D034, 2026-08-17) is your third RFID-domain consultation, and the
+first time this platform's central "no synchronous registry calls from site operations"
+principle was deliberately, explicitly broken -- not eroded silently, but named as a
+single scoped exception. lens-determiner paired Saga Pattern against Event-Driven
+Architecture, but on a fresh axis from either prior RFID pairing: not
+invariant-ownership-vs-transport (D032) and not transport-vs-transport (D033), but *how
+much eventual consistency a compensating flow can tolerate before authorizing an
+irreversible action* (a refund). Saga won because a return is a genuine multi-step
+process needing a real compensating action (deny refund, quarantine item) -- the same
+threshold that won Saga over choreography in D031 (PTL), generalized a third time to a
+domain with no PTL/OMS vocabulary at all. The most interesting move in this decision is
+not the lens choice itself but the locality split you (via the pipeline) constructed
+inside it: same-store returns needed no exception at all (local cache is sufficient
+proof), so the no-sync-call exception was scoped to exactly the one leg (cross-store)
+that structurally cannot avoid it -- a sharper form of "which lens can make a promise
+the other cannot" than D032/D033 asked, because here the answer differs *within a single
+flow* depending on a runtime condition (locality), not just between two lenses. This also
+produced a genuinely new fail-safe outcome, `PendingVerification`, that GateSession's
+binary FailOpen/FailClosed (D032) never needed -- worth noticing as a case where a
+domain-specific property (customer and item both still physically present, refund not
+yet issued) expanded the design space beyond a prior precedent rather than reusing it
+unchanged. Next step: before the next consultation, practice spotting *which* physical or
+business property (like "is the transaction reversible" or "is a human still present")
+would expand a design space the way it did here, rather than only asking "which existing
+FailSafeMode-style enum applies."
+
 ## Skill Domains
 
 ### Distributed Systems
-- [ ] CAP theorem and consistency models — foundational for every distributed design decision
+- [x] CAP theorem and consistency models — foundational for every distributed design decision — **first concretely applied in D034 (RFID ReturnSaga): the real decision variable was not consistency vs. availability in the classic sense, but how much eventual consistency a flow can tolerate before authorizing an irreversible action (a refund) — same-store returns tolerate full eventual consistency (local cache is authoritative), cross-store returns do not, hence one bounded synchronous checkpoint scoped to that leg only**
 - [ ] Failure modes: partial failures, network partitions, cascading failures
 - [x] In-process coupling vs real network boundary — **encountered in D023 (Order.API project-referenced Master/Portal despite separate deploy pipelines; "independently deployable" does not equal "decoupled" unless the call path is actually swapped from assembly reference to HTTP/gRPC)**
 - [x] Idempotency and exactly-once semantics — encountered in D018 (CreateOrderHandler idempotency check); reinforced in D020 (ACL adapter idempotency key on outbox worker retry); reinforced again in D024 (extended the same dedup-table pattern to a Kafka consumer for the first time, plus a MERGE/upsert as a database-level idempotency backstop)
@@ -97,6 +123,7 @@ volatile and *external* to the core meets something that must stay stable).
 - [x] Service Mesh (sidecar proxy pattern) — mTLS, transport-level retry/circuit-breaking, and centralized observability with zero application code changes — **first evaluated in D030 (Istio/Linkerd PERMISSIVE-mode proposal for the Sprint-OMS gRPC fabric). Not chosen as primary because it cannot fix compile-time coupling or plaintext secrets (application-layer concerns), but its one urgent, code-fixable finding — disabled TLS certificate validation — was folded into the winning Hexagonal solution as an interim fix; full mesh adoption deferred to an explicit Phase-2 track pending external K8s sidecar-injection infrastructure. Key lesson: know the mesh's scope boundary before proposing it**
 - [x] Saga Pattern — distributed transaction coordination — **evaluated in D019 (Returns flow); rejected for 2-service case in favor of outbox+ACL; understand when Saga is warranted (3+ services) vs overkill**
 - [x] Saga Pattern — won outright as the *primary* lens for the first time in D031 (PTL Task Orchestrator), in a domain with no relationship to OMS; the threshold that mattered here was not service count but "who enforces the cross-cutting invariants" (1 order=1 box=1 invoice, single active box per slot, mixed-carton rejection) — a generalization of the D019 threshold rule beyond service-count alone
+- [x] Saga Pattern -- extended in D034 (RFID ReturnSaga) to a *locality-scoped* threshold: the same saga branches its verification strategy at runtime (local-only for same-store, one bounded synchronous checkpoint for cross-store) rather than the whole flow uniformly needing orchestration -- a finer-grained application of "who enforces the invariant" than D031/D032, decided per-instance, not per-flow
 - [x] Strangler Fig — incremental legacy migration — **encountered in D023 (facade-first: ship Gateway/BFF/OTel in front of the coupled Order.API immediately, then strangle Order-to-Master/Portal project references one seam at a time via a feature-flagged legacy-vs-HTTP port, instead of a big-bang network-boundary rewrite)**
 - [x] Domain-Driven Design: bounded contexts, aggregates, ubiquitous language — **encountered in D018 (Order aggregate root, state machine, Anti-Corruption Layers, RolloutPolicy domain service) and D019 (Package value object, PreHoldState snapshot, Returns sub-machine invariants)** Extended in D032 (GateSession aggregate): DDD applied outside greenfield OMS for the first time -- the aggregate here exists purely to make a code-level invariant (zero-loss) impossible to violate, not to model a rich business lifecycle.
 - [x] Modular Monolith — module boundary enforcement, schema isolation, future service extraction path — **encountered in D020 (4-module OMS: Order/Payment/Returns/Configuration with separate PostgreSQL schemas, ID-only cross-module access, ACL adapters as boundary contracts)**
@@ -111,6 +138,7 @@ volatile and *external* to the core meets something that must stay stable).
 - [x] Manifest/state pre-positioning — publishing data ahead of a physical event so an edge/consumer already has what it needs when the event occurs, rather than fetching synchronously at decision time — first named explicitly in D032 (RFID manifest.created published to the destination site before goods physically arrive, consumed into a local read-model an aggregate evaluates against)
 - [x] Recognizing EDA's scope limits, not just its strengths — in D033, extending the platform's broker fabric across a WAN to thousands of edge sites was evaluated and rejected as the primary transport (not because at-least-once/ordered-replay was wrong, but because persistent per-site broker sessions reintroduce per-client state and raise real firewall-traversal risk); EDA's reliability instincts were still reused, but only as the *internal* publish pipeline, never exposed across the WAN hop itself
 - [x] Outbox pattern — **encountered in D018 (reliable Sprint Connect event delivery); extended in D019 (new domain events for Returns, OnHold, PackageLost dispatched through same outbox table)**
+- [x] Targeted cache invalidation via partition-key routing, not broadcast — encountered in D034: paid-EPC cache removal on return is published partitioned by the *originating* site_id (the store whose cache is actually stale), not fanned out to every store -- the same site_id-partition mechanism D032 used for manifest pre-positioning, reapplied here for a removal instead of an addition
 
 ### Security & Secrets Management
 - [x] Secrets as an abstraction seam, not a config value — **first deep dive in D030 (ISecretProvider port; environment-variable-first with a logged legacy-appsettings fallback so migration is zero-disruption); the underlying rule — committed secrets must be *rotated* via a seam, not merely deleted from source — is what made Hexagonal the only lens satisfying the hard constraints**
@@ -207,6 +235,11 @@ volatile and *external* to the core meets something that must stay stable).
 | Hexagonal port applied to a transport-protocol boundary — a stateless HTTPS batch API chosen as "the only edge-facing surface" specifically because it satisfies statelessness and firewall-traversal constraints a broker-based alternative could not | 2026-08-10 | P028/D033/S033 | Architectural Patterns | High |
 | EDA evaluated and rejected as a primary transport, not just folded in — persistent per-site broker sessions over a WAN put statelessness and firewall-traversal constraints in direct structural tension, distinct from every prior D030/D031/D032 case where EDA was the winning or complementary transport | 2026-08-10 | P028/D033 | Event-Driven Architecture | High |
 | Operational constraints (firewall/proxy traversal, per-client session state at fleet scale) as the deciding factor in a protocol choice, ahead of raw feature richness | 2026-08-10 | P028/D033 | System Design Fundamentals | High |
+| Locality-scoped verification — the same flow branches its consistency/verification strategy by a runtime condition (same-store vs. cross-store), rather than the whole flow uniformly choosing one lens | 2026-08-17 | P029/D034/S034 | Distributed Systems | High |
+| Saga Pattern generalized to a per-instance threshold, not just a per-flow one — most of a return needs no exception to eventual consistency; only the leg with zero local evidence does | 2026-08-17 | P029/D034/S034 | Architectural Patterns | High |
+| A third fail-safe outcome beyond FailOpen/FailClosed (PendingVerification) — made possible specifically because the actor and item are still physically present and the irreversible action (refund) has not yet occurred, unlike GateSession's gate-has-already-passed cases | 2026-08-17 | P029/D034/S034 | System Design Fundamentals | High |
+| Targeted, partition-routed cache invalidation (by originating site_id) as the event-driven half of a Saga+EDA blend, reusing D032's manifest pre-positioning transport for a removal instead of an addition | 2026-08-17 | P029/D034/S034 | Event-Driven Architecture | Medium |
+| Scoping a new short-lived ledger narrowly (return-window retention only) to patch a data-availability gap created by an earlier, deliberate storage-saving decision (CountOnly tracking mode), without reversing that decision | 2026-08-17 | P029/D034/S034 | Data Architecture Patterns | Medium |
 
 ---
 
@@ -836,6 +869,60 @@ already committed to a pattern before you arrive.
 - Practice: Re-read a design doc or README for a system you did not build. Find one
   sentence that is already describing a named architectural pattern in plain
   language, without using the pattern's name.
+
+### Consultation: RFID Store Returns -- Reverse Flow, Paid-EPC Cache Removal, Cross-Store Validation (2026-08-17) — KB: P029 / D034 / S034
+
+This is your third RFID consultation and the first time a lens choice produced a
+*within-flow* branch rather than a single answer for the whole problem. Here is what to
+study:
+
+**1. Locality as a First-Class Design Variable, Not Just a Deployment Detail**
+`ReturnSaga` does not pick one verification strategy for "returns" as a whole -- it
+branches on `ReturnLocality` (SameStore vs. CrossStore) because the two cases have
+genuinely different evidence available: SameStore's local paid-EPC cache IS sufficient
+proof; CrossStore structurally has none. This is the sharpest form yet of a question
+you have been building toward since D032 ("which lens can make a promise the other
+cannot") -- here the answer isn't even about the two lenses globally, it's about which
+*instances* of the same flow need which promise.
+- Study: re-read S034's `VerifySameStore()` vs `VerifyCrossStoreAsync()` side by side --
+  notice neither is "the real design" with the other as a special case; they are two
+  equally-valid resolutions of the same invariant (`ReturnVerdict` must be reached
+  before refund) under different evidence conditions.
+- Practice: name one other flow (in this KB or elsewhere) where "where did this happen"
+  or "who has local proof" could split a single flow into two verification strategies
+  the way this one does.
+
+**2. A Deliberate, Scoped Exception to an Established Principle -- and How to Bound One**
+D034 is the first RFID decision to break "no synchronous registry calls from site
+operations," but it does so narrowly: only the CrossStore leg of returns, with an
+explicit timeout, and a named third outcome (`PendingVerification`) instead of a binary
+pass/fail. This is a distinct skill from choosing a lens: knowing *how* to break your
+own rule safely once you decide you must, rather than either refusing to break it at
+all costs or breaking it silently everywhere.
+- Study: look for the "strangler exception" pattern in your own future audits -- any
+  time a hard architectural rule gets one narrow, named, bounded exception rather than
+  either blanket enforcement or silent erosion, that is the same discipline at work.
+- Practice: write out, for `PendingVerification`, what would happen if this decision
+  had instead defaulted to FailOpen, and separately to FailClosed -- name the concrete
+  business cost of each, the way D034's Consequences section does.
+
+**3. Patching a Prior Decision's Trade-off Without Reversing It**
+`CountOnly` tracking mode (from the RFID architecture's Dual EPC Tracking Mode
+decision) deliberately does not persist per-EPC history to save storage/event
+overhead. Returns need exactly that history for validation. Rather than reversing
+CountOnly, D034 adds `ISoldEpcLedger` -- a short-lived, narrowly-scoped record that
+exists only long enough to serve the return-window use case, then gets purged. This is
+a distinct skill from picking a lens: recognizing when a new requirement is in tension
+with an *already-shipped* decision, and solving it with the smallest possible patch to
+that decision's scope rather than either ignoring the tension or reopening the whole
+decision.
+- Study: find one other decision in this KB where a later problem revealed a gap in an
+  earlier one (e.g. D032 Addendum 9's `PoRef` field) and compare how narrowly each fix
+  was scoped relative to the original decision.
+- Practice: articulate, in one sentence, the difference between "patch a decision's
+  blind spot" (what D034 did to CountOnly) and "supersede a decision" (what would be
+  needed if CountOnly's core premise were wrong, not just incomplete for one new use
+  case).
 
 ---
 

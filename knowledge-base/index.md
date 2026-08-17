@@ -36,6 +36,7 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [P026](problems/P026-ptl-manual-file-integration-to-api-driven-orchestration.md) | PTL Warehouse Integration -- Replace Manual Excel/File Exchange with API-Driven Task Orchestration | warehouse-management, put-to-light, wms-sap-integration, mhe-plc-integration, api-integration, partial-fulfillment, task-orchestration, exception-handling | high | D031 | S031 |
 | [P027](problems/P027-rfid-gate-transfer-manifest-verification.md) | RFID Gate Transfer Verification -- Manifest-Based Unregistered Tag Detection for Intra-Site and Inter-Site Movement | rfid, edge-computing, gate-verification, manifest-sync, offline-first, warehouse-management, inter-site-transfer, event-driven-architecture, fail-safe, real-time | high | D032 | S032 |
 | [P028](problems/P028-rfid-ingestion-wan-transport-protocol-selection.md) | RFID Ingestion Service -- Edge-to-Platform WAN Transport Protocol Selection | rfid, edge-computing, offline-first, transport-protocol, batch-processing, idempotency, horizontal-scaling, wan-integration | high | D033 | S033 |
+| [P029](problems/P029-rfid-store-returns-reverse-flow-paid-epc-cache.md) | RFID Store Returns -- Reverse Flow for `returned` State, Paid-EPC Cache Removal, and Cross-Store Return Validation | rfid, returns, fraud-prevention, offline-first, edge-computing, cache-invalidation, event-driven-architecture, saga-pattern, loss-prevention, state-machine, retail, eas | high | D034 | S034 |
 
 ---
 
@@ -76,6 +77,7 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [D031](decisions/D031-ptl-saga-orchestrated-task-lifecycle-event-driven-backbone.md) | PTL Task Saga -- Orchestrated Process Manager over an Event-Carried State Backbone | Orchestrated Saga (PTL Task Orchestrator) with event-bus transport for WMS/SAP/PTL/Marketplace notifications | P026 | warehouse-management, put-to-light, saga-pattern, event-driven-architecture, wms-sap-integration, mhe-plc-integration, partial-fulfillment, exception-handling | S031 |
 | [D032](decisions/D032-rfid-gatesession-ddd-manifest-eda-prepositioning.md) | GateSession Domain Aggregate Enforcing Zero-Loss/Fail-Safe Manifest Evaluation, Fed by Event-Pre-Positioned Manifest Cache | GateSession Domain Aggregate (DDD) enforcing zero-loss/fail-safe manifest evaluation, fed by event-pre-positioned manifest cache (EDA transport) | P027 | rfid, edge-computing, gate-verification, manifest-sync, domain-driven-design, event-driven-architecture, offline-first, fail-safe, warehouse-management | S032 |
 | [D033](decisions/D033-rfid-hexagonal-https-batch-ingestion-port.md) | Stateless HTTPS/mTLS Batch Ingestion API (Hexagonal Port) as the Edge-to-Central WAN Transport, with At-Least-Once EDA Publish Folded In | Stateless HTTPS/mTLS batch ingestion API (Hexagonal port) as WAN transport; internal EDA publish pipeline unchanged | P028 | rfid, edge-computing, offline-first, transport-protocol, hexagonal-architecture, event-driven-architecture, batch-processing, idempotency, horizontal-scaling | S033 |
+| [D034](decisions/D034-rfid-return-saga-locality-scoped-verification.md) | ReturnSaga -- Locality-Scoped Verification with Event-Driven Paid-EPC Cache Invalidation | ReturnSaga (Saga Pattern), local-only verdict for same-store returns, bounded synchronous checkpoint for cross-store returns, event-driven cache invalidation routed to the originating store | P029 | rfid, returns, fraud-prevention, saga-pattern, event-driven-architecture, offline-first, cache-invalidation, retail, loss-prevention, state-machine | S034 |
 
 ---
 
@@ -112,6 +114,7 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [S031](snippets/S031-ptl-task-saga-orchestrator/) | PTL Task Saga Orchestrator -- State Machine + Mixed-Carton Rejection + Allocation-vs-Stock Hold + Partial SO/STO | C# | P026 | D031 |
 | [S032](snippets/S032-rfid-gatesession-manifest-cache/) | GateSession Domain Aggregate + Event-Pre-Positioned Manifest Cache | C# | P027 | D032 |
 | [S033](snippets/S033-rfid-ingestion-http-batch-port/) | Stateless HTTPS Batch Ingestion Port + Edge Offline-Buffer Client | C# | P028 | D033 |
+| [S034](snippets/S034-rfid-return-saga-cache-invalidation/) | ReturnSaga -- Locality-Scoped Verification + Event-Driven Paid-EPC Cache Invalidation | C# | P029 | D034 |
 
 ---
 
@@ -217,3 +220,47 @@ batch-oriented, WAN-latency-tolerant workload. S033 ships an ASP.NET Core batch 
 endpoint (C#, no MediatR/AutoMapper per repo standard) with per-event_id synchronous acks, paired
 with an edge-side EdgeIngestionClient that only purges its offline buffer on explicit
 server-confirmed event_ids.
+
+_Also 2026-08-17 -- added P029/D034/S034 from inbox/RFID/returns-flow-req.md
+(the platform's third formal RFID Event Platform consultation, after P027/D032/S032
+and P028/D033/S033). Problem discovered as a real gap while drawing
+manual/rfid-sequence-diagrams.md Diagram J (EAS Exit Check): the paid-EPC cache has a
+fully documented "add on sale" path but no "remove on return" path -- a live
+loss-prevention control failure, not a doc gap, since a returned-then-resold item would
+silently defeat EAS forever after. kb-search against the existing 28 entries found P027
+(~0.28 overlap on rfid/edge-computing/offline-first/event-driven-architecture) and P028
+(~0.19 overlap on rfid/edge-computing/offline-first) as the only meaningful precedents,
+both below the 0.8 UPDATE threshold -- correctly a new CREATE-mode record. The
+requesting brief named one explicit architectural tension to resolve rather than dodge:
+cross-store return validation needs to know what a *different* site did, which directly
+conflicts with the platform's established "no synchronous registry calls from site
+operations" principle (GateSession/P027/D032, EAS, checkout all rely on local cache +
+pre-positioned data only). lens-determiner paired Saga Pattern against Event-Driven
+Architecture -- a fresh contrast axis for this platform, distinct from D032's
+invariant-ownership-vs-transport split and D033's transport-vs-transport split: how
+much eventual consistency a return can tolerate before authorizing an irreversible
+action (a refund). Saga won as primary because a return is a genuine multi-step process
+needing a real compensating action (deny refund, quarantine item) that a single
+event-reaction cannot express as cleanly (the same reasoning that won Saga over
+choreography in D031/PTL); EDA was folded in, not rejected, as (a) the only path for
+same-store returns and (b) the transport that routes the resulting paid-EPC cache
+invalidation to the correct store, partitioned by the *originating* site_id rather than
+broadcast fleet-wide. The decision's one deliberate architectural concession: cross-store
+return verification is now the platform's first and only named, scoped exception to
+"no synchronous registry calls," justified by the fact that (unlike checkout/EAS/gate
+flows) the customer and item are still physically present with the refund not yet
+issued, which also enabled a genuinely new third fail-safe outcome
+(`PendingVerification`) that GateSession's binary FailOpen/FailClosed never needed,
+since GateSession's failure cases all occur after goods have already left custody. Also
+resolves, for the first time in this KB, a real answer for `tid_registry` (previously
+noted across prior RFID consultations as existing but never consumed by any live flow)
+and for `CountOnly` GTIN returns (a new short-lived `ISoldEpcLedger`, scoped narrowly to
+the return-window duration, since CountOnly's lifecycle-tracking omission otherwise
+leaves zero ground truth to validate a CountOnly return against). Does not contradict
+D032 or D033 -- extends the platform's no-sync-call principle with its first explicit,
+narrow, audited exception rather than eroding it silently. Six open items logged in P029
+(retry SLA duration, whether cross-store returns are validated business policy, the
+CountOnly ledger retention window, local TID-cache population reliability, the
+FraudHold-to-resolution workflow, and POS refund-timing integration) -- all operational
+validation gaps in the same style already established by P027, not architectural gaps in
+D034 itself._
