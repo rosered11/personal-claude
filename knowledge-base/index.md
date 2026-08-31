@@ -37,6 +37,9 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [P027](problems/P027-rfid-gate-transfer-manifest-verification.md) | RFID Gate Transfer Verification -- Manifest-Based Unregistered Tag Detection for Intra-Site and Inter-Site Movement | rfid, edge-computing, gate-verification, manifest-sync, offline-first, warehouse-management, inter-site-transfer, event-driven-architecture, fail-safe, real-time | high | D032 | S032 |
 | [P028](problems/P028-rfid-ingestion-wan-transport-protocol-selection.md) | RFID Ingestion Service -- Edge-to-Platform WAN Transport Protocol Selection | rfid, edge-computing, offline-first, transport-protocol, batch-processing, idempotency, horizontal-scaling, wan-integration | high | D033 | S033 |
 | [P029](problems/P029-rfid-store-returns-reverse-flow-paid-epc-cache.md) | RFID Store Returns -- Reverse Flow for `returned` State, Paid-EPC Cache Removal, and Cross-Store Return Validation | rfid, returns, fraud-prevention, offline-first, edge-computing, cache-invalidation, event-driven-architecture, saga-pattern, loss-prevention, state-machine, retail, eas | high | D034 | S034 |
+| [P030](problems/P030-rfid-inbound-correlation-without-dock-scheduling.md) | RFID Inbound Gate/Session Correlation Without Dock Scheduling -- Receiving-Zone-to-PO Matching Invalidates D032 Addendum 5/6/7's Universal Assumption | rfid, edge-computing, gate-verification, manifest-sync, offline-first, warehouse-management, inbound-receiving, dock-scheduling, fail-safe, operational-validation | high | D035 | S035 |
+| [P031](problems/P031-rfid-container-sscc-item-epc-relationship.md) | Container-Level EPC (SSCC) Modeling With a Queryable Relationship to Item-Level EPCs | rfid, edge-computing, gate-verification, manifest-sync, offline-first, domain-driven-design, warehouse-management, sscc | high | D036 | S036 |
+| [P032](problems/P032-rfid-location-scoped-cycle-count-self-asserted-baseline.md) | Location-Scoped Cycle Count -- Deriving a Self-Asserted Expected-EPC Baseline From Platform-Owned State | rfid, edge-computing, offline-first, domain-driven-design, cqrs, warehouse-management, cycle-count, gate-verification | high | D037 | S037 |
 
 ---
 
@@ -78,6 +81,9 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [D032](decisions/D032-rfid-gatesession-ddd-manifest-eda-prepositioning.md) | GateSession Domain Aggregate Enforcing Zero-Loss/Fail-Safe Manifest Evaluation, Fed by Event-Pre-Positioned Manifest Cache | GateSession Domain Aggregate (DDD) enforcing zero-loss/fail-safe manifest evaluation, fed by event-pre-positioned manifest cache (EDA transport) | P027 | rfid, edge-computing, gate-verification, manifest-sync, domain-driven-design, event-driven-architecture, offline-first, fail-safe, warehouse-management | S032 |
 | [D033](decisions/D033-rfid-hexagonal-https-batch-ingestion-port.md) | Stateless HTTPS/mTLS Batch Ingestion API (Hexagonal Port) as the Edge-to-Central WAN Transport, with At-Least-Once EDA Publish Folded In | Stateless HTTPS/mTLS batch ingestion API (Hexagonal port) as WAN transport; internal EDA publish pipeline unchanged | P028 | rfid, edge-computing, offline-first, transport-protocol, hexagonal-architecture, event-driven-architecture, batch-processing, idempotency, horizontal-scaling | S033 |
 | [D034](decisions/D034-rfid-return-saga-locality-scoped-verification.md) | ReturnSaga -- Locality-Scoped Verification with Event-Driven Paid-EPC Cache Invalidation | ReturnSaga (Saga Pattern), local-only verdict for same-store returns, bounded synchronous checkpoint for cross-store returns, event-driven cache invalidation routed to the originating store | P029 | rfid, returns, fraud-prevention, saga-pattern, event-driven-architecture, offline-first, cache-invalidation, retail, loss-prevention, state-machine | S034 |
+| [D035](decisions/D035-rfid-zone-receiving-manifest-resolution-dock-alternative.md) | Manifest-Instance Resolution by Staff-Selected Delivery Reference (ManifestId) as a Third GateSession Resolution Mode, D032 Addendum 5/6/7 Retained as a Per-Site Alternative | Staff-selected ManifestId resolution (DDD, in-aggregate extension) for zone receiving, with dock-appointment gate+window resolution (D032 Addendum 5/6/7) kept as a per-site-configurable alternative, not superseded | P030 | rfid, edge-computing, gate-verification, manifest-sync, domain-driven-design, hexagonal-architecture, offline-first, fail-safe, warehouse-management, inbound-receiving | S035 |
+| [D036](decisions/D036-rfid-container-contents-ddd-scoped-edge-projection.md) | Container Identity + Container-Contents Relational Model, DDD-Owned With CQRS-Scoped Edge Fanout | Container registry/contents relational model (DDD, Serialization-Service-owned) with CQRS-scoped edge fanout (container-to-contents pushed to edge, item-to-container kept central-only) | P031 | rfid, edge-computing, gate-verification, manifest-sync, domain-driven-design, warehouse-management, sscc, cqrs | S036 |
+| [D037](decisions/D037-rfid-location-count-session-cqrs-projection-container-aware.md) | LocationCountSession -- GateSession-Sibling Aggregate (DDD) Fed by a Container-Aware CQRS Materialized Projection | LocationCountSession (DDD, GateSession-sibling) resolving via a container-aware location_contents materialized projection (CQRS), fanned out edge-scoped like every other GateSession-family cache | P032 | rfid, edge-computing, offline-first, domain-driven-design, cqrs, warehouse-management, cycle-count, gate-verification | S037 |
 
 ---
 
@@ -115,6 +121,9 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [S032](snippets/S032-rfid-gatesession-manifest-cache/) | GateSession Domain Aggregate + Event-Pre-Positioned Manifest Cache | C# | P027 | D032 |
 | [S033](snippets/S033-rfid-ingestion-http-batch-port/) | Stateless HTTPS Batch Ingestion Port + Edge Offline-Buffer Client | C# | P028 | D033 |
 | [S034](snippets/S034-rfid-return-saga-cache-invalidation/) | ReturnSaga -- Locality-Scoped Verification + Event-Driven Paid-EPC Cache Invalidation | C# | P029 | D034 |
+| [S035](snippets/S035-rfid-zone-receiving-manifest-resolution/) | Zone-Receiving Manifest Resolution -- Staff-Selected ManifestId as a Third GateSession Correlation Mode | C# | P030 | D035 |
+| [S036](snippets/S036-rfid-container-contents-gatesession-extension/) | Container-Contents GateSession Extension -- Header Branch, Container Registry, Scoped Edge Fanout | C# | P031 | D036 |
+| [S037](snippets/S037-rfid-location-count-session-cqrs-projection/) | LocationCountSession -- Container-Aware Location-Contents Projection + Missing-EPC Enforcement | C# | P032 | D037 |
 
 ---
 
@@ -264,3 +273,171 @@ CountOnly ledger retention window, local TID-cache population reliability, the
 FraudHold-to-resolution workflow, and POS refund-timing integration) -- all operational
 validation gaps in the same style already established by P027, not architectural gaps in
 D034 itself._
+
+_Also 2026-08-24 -- added P030/D035/S035 from inbox/RFID/inbound-no-dock-correlation-req.md
+(the platform's fourth formal RFID Event Platform consultation, and the first one that
+revisits and partially invalidates a specific prior decision rather than extending the
+platform into new territory). Problem: a real warehouse site visit -- asking exactly
+the P027 Open Item #11/#12 open questions -- confirmed that D032 Addendum 5/6/7's
+inbound/outbound gate-correlation mechanism (join a WMS/TMS dock appointment to a
+MovementManifest by PoRef, resolve GateSession via GetActiveManifestForGate(siteId,
+gateId, asOf)) cannot function at this site: there is no dock-scheduling concept at
+all, goods are staged at a general receiving zone and matched to a PO afterward by
+staff. Since gate_id/ScheduledWindow are Addendum 5's only resolution key and neither
+is ever populated under this operational model, every inbound session at this site
+was permanently falling back to FailSafeMode -- not an edge case, but the normal path
+for 100% of inbound receiving. kb-search against the existing 29 entries found P027 as
+the closest precedent (~0.6 overlap on rfid/edge-computing/gate-verification/manifest-
+sync/offline-first/warehouse-management/fail-safe/event-driven-architecture) -- high,
+but below the 0.8 UPDATE threshold, so this correctly became a new CREATE-mode record
+rather than overwriting P027/D032/S032, consistent with how P028 and P029 were also
+correctly kept separate from P027 despite meaningful tag overlap on the same platform.
+lens-determiner paired Domain-Driven Design (pragmatic in-aggregate extension) against
+Hexagonal Architecture (formal IManifestResolutionStrategy port) -- a fresh axis for
+this platform, not "who owns the invariant vs. how data moves" (D032), not "which
+transport wins outright" (D033), and not "how much eventual consistency before an
+irreversible action" (D034), but a premature-abstraction question: does a third known
+variant of the same concern (how a GateSession resolves its manifest) earn a formal
+strategy interface, or stay an explicit branch in the aggregate that already owns it.
+DDD won as primary because the Clarified Scope's own steer ("evaluate whether the same
+pattern... is the right fit here, rather than inventing something new") and the
+platform's own precedent (Addendum 5 already added a second resolution branch this
+exact way, successfully) both pointed the same direction: GateSession gains a third
+named factory method, OpenForZoneReceiving, resolving through the already-generic
+IManifestCache.GetActiveManifestFor(siteId, key) -- the same port method
+movementRoundId already uses -- keyed on the specific delivery's ManifestId (not bare
+PoRef, since a PO can have multiple concurrent partial-delivery manifests and PoRef
+alone would be ambiguous among them, the same "ambiguity must fail-safe, never guess"
+principle Addendum 5 already established for overlapping dock windows). Hexagonal's
+strategy-port insight was folded in as an explicit, named future trigger rather than
+rejected or built speculatively: promote to a formal IManifestResolutionStrategy port
+the moment a confirmed fourth resolution mode is needed, not before -- the same YAGNI
+stance the platform already took once in D032 Addendum 3 (declined to build speculative
+manifest chunking until a real size problem was confirmed). D032 Addendum 5/6/7 is
+explicitly NOT superseded or deprecated -- it is retained as one of two supported
+resolution paths, selected per site via a new inbound_correlation_mode config value
+delivered through the existing Site & Config Service heartbeat-push mechanism (a config
+value, not a new system), directly answering the Clarified Scope's requirement not to
+assume this generalizes to every DC. Per-partial-delivery completeness
+(ComputeMissingExpectedEpcs/ReconcileCountOnlyGtins, D032 Addendum 3/4) required zero
+changes -- each partial delivery was already its own MovementManifest (Addendum 3,
+PoRef shared across partials per Addendum 9); this decision's only real job was
+ensuring GateSession resolves the correct one of potentially several manifests sharing
+a PoRef, closed via ManifestId keying plus a new MovementManifest.ConsumedAt field (also
+finally giving the original D032 decision's "Created -> Distributed -> Active ->
+Consumed/Expired" lifecycle language an actual implementation). Directly resolves P027
+Open Item #12 ("every inbound PO assumed to get a dock appointment -- unvalidated"),
+now confirmed false for one real site and generalized into a second supported mode;
+P027 Open Item #11 (gate_id/WMS-TMS dock-door namespace matching) remains fully open
+for any site keeping the DockAppointment mode. Seven open items logged in P030
+(ConsumedAt write-path reliability, staff picklist disambiguation UX, config schema
+ownership, pending-manifest retention/expiry, whether other DCs also lack dock
+scheduling, residual P027 #11, and fail-safe mode tuning for zone receiving) -- all
+either operational/rollout validation gaps in the same style already established by
+P027/P029, or explicitly deferred abstraction decisions with a named trigger, not
+architectural gaps in D035 itself._
+
+_Also 2026-08-24 -- added P031/D036/S036 from inbox/RFID/container-sscc-modeling-req.md
+(the platform's fifth formal RFID Event Platform consultation, and the second of
+three sequential consultations queued from the same real warehouse site visit that
+produced P030/D035/S035). Problem: `manual/rfid-component-reference.md` Appendix 6
+had already flagged, as a forward-looking caveat, that SSCC container tags might
+appear alongside item-level SGTIN tags at a gate someday -- that day arrived as a
+stated operational requirement: the platform needs an EPC for the box/carton itself,
+with a queryable relationship to the item-level EPCs packed inside ("what is inside
+this box" / "which box is this item in"), not just safe tolerance of the tag via the
+existing `UnsupportedScheme` verdict (D032 Addendum 10). kb-search against the
+existing 30 entries found P030 and P027 tied as the closest precedents (~0.6 overlap
+each on rfid/edge-computing/gate-verification/manifest-sync/offline-first/warehouse-
+management, tie-broken by recency), both below the 0.8 UPDATE threshold -- correctly
+a new CREATE-mode record. lens-determiner paired Domain-Driven Design against CQRS --
+a fresh axis for this platform, not "who owns the invariant vs. how data moves"
+(D032), not "in-aggregate extension vs. formal port" (D035), but "is the
+container-contents relationship a first-class modeled entity, or purely a
+bidirectional-indexing/query-shape problem" -- directly motivated by the requirement
+itself naming two distinct query directions. DDD won as primary (container identity
+modeled relationally in the Serialization DB, owned by Serialization Service exactly
+like `epc_registry`/`movement_manifests`, published via the existing supplier-facing
+API or Tagging Station App), but CQRS's two sharpest insights were folded in rather
+than rejected: (1) fanout-scope discipline -- only the container-to-contents
+direction is pre-positioned to the edge, since that is the only direction
+`GateSession` needs at zero-delay; the reverse item-to-container lookup stays
+central-only (Query/Admin API), avoiding unnecessary edge-cache bloat, the platform's
+first explicit asymmetric-fanout design; (2) write-boundary completeness validation
+(declared count + checksum), reusing D032 Addendum 1's pattern for the new
+`ContainerPackedEvent`. `GateSession`'s Header-validation logic (D032 Addendum 10)
+changes from a single catch-all (`UnsupportedScheme` for any non-SGTIN scheme) to a
+scheme-classified branch: SSCC now resolves against a locally-cached container-
+contents projection and returns a new `GateVerdict.ContainerRead`; GRAI/GIAI/SGLN are
+completely unchanged, still `UnsupportedScheme`, per the Clarified Scope's explicit
+instruction not to weaken that path. A mixed item+container session reports both via
+a new `GateSessionResult.ContainerReads` list, alongside the existing per-EPC
+verdicts -- deliberately never expanding a container read into synthetic per-item
+`Expected` verdicts for EPCs the antenna did not actually, individually read.
+Confidence rated medium (not high): this consultation surfaced a genuine,
+previously-unknown correctness risk -- items packed inside a sealed, RF-occluded
+container may never be individually read and would falsely surface in
+`ComputeMissingExpectedEpcs()` (D032 Addendum 4) unless downstream cross-references
+`ContainerReads` first -- logged as P031 Open Item 1, highest priority, not resolved
+by D036 itself. Three further open items logged (container seal/immutability policy,
+Tagging Station App container-assembly UX, completeness-proof field definitions) --
+all business-rule/operational-validation gaps in the same style already established
+by P027/P029/P030, not architectural gaps in D036. Does not contradict D032, D033,
+D034, or D035 -- extends D032 Addendum 10's Header-validation branch for the first
+time since it was written, and reuses every existing transport/integration surface
+(supplier-facing API, Tagging Station App, manifest pre-positioning pipeline) rather
+than inventing new infrastructure._
+
+_Also 2026-08-24 -- added P032/D037/S037 from inbox/RFID/location-cycle-count-req.md
+(the platform's sixth formal RFID Event Platform consultation, and the third and
+last of three consultations queued from the same real warehouse site visit that
+produced P030/D035/S035 and P031/D036/S036). Problem: the platform's only existing
+cycle-count flow (`count.completed`, Event Processor flow #3) compares scanned
+counts against site-wide book stock -- there is no concept of a location-scoped
+expected-EPC baseline, and unlike every prior `GateSession` flow, such a baseline
+has no external declaring document to source it from; it must be derived from the
+platform's own last-known state (`epc_registry`), which itself has no location
+column below `site_id` today. kb-search against the existing 31 entries found P031
+as the closest precedent (~0.6 overlap: rfid, edge-computing, gate-verification,
+offline-first, domain-driven-design, warehouse-management), with P030 and P027 tied
+further behind (~0.38 each) -- all below the 0.8 UPDATE threshold, correctly a new
+CREATE-mode record. lens-determiner paired Domain-Driven Design against CQRS -- the
+same lens pair as D036, but on a fresh axis: not "first-class modeled entity vs.
+bidirectional query-shape problem" (D036), but whether an expected-EPC list that the
+platform asserts about itself (rather than one an external system declares) should
+be produced and evaluated the same way as every prior manifest, or needs a
+genuinely different mechanism. DDD won as primary for invariant enforcement
+(`LocationCountSession`, a new type reusing `GateSession`'s zero-loss/zero-delay/
+fail-safe shape field-for-field, deliberately NOT a fifth `GateSession.OpenForXxx`
+resolution mode, because a continuously-live self-asserted snapshot has no
+Created->Distributed->Active->Consumed/Expired lifecycle the way a `MovementManifest`
+does) -- but CQRS's core mechanism was adopted as essential infrastructure, not an
+optional companion: `location_contents`, a materialized projection folded from the
+same location-stamping events that already update `epc_registry`, joined against
+D036's `container_contents` table at build time so a container's resolved contents
+automatically propagate to its location without every item inside needing its own
+location stamp. This closes P031/D036 Open Item 1 (container-packed items falsely
+appearing missing) BY CONSTRUCTION for this flow specifically -- the first
+implementation of the cross-reference D036 flagged but never built -- though the
+three pre-existing `GateSession` flows still lack it, leaving that risk open
+platform-wide (logged as P032 Open Item 1). Schema change: new nullable
+`epc_registry.location_id` (+ `location_updated_at`), granularity a per-site config
+value defaulting to Zone (mirroring D035's "config value, not a new system"
+discipline); stamped/cleared by extending the existing `GateSessionResult`-shape
+event consumer (Appendix 4 group 1) with an optional `DestinationLocationId` rather
+than inventing a new write path. Transport reuses 100% of the platform's proven
+pre-positioning pipeline (Kafka central-only -> Site & Config Service -> Redis ->
+HTTPS/mTLS poll -> edge cache) through a new, structurally parallel port,
+`ILocationContentsCache`, scoped per-site -- the tightest asymmetric fanout this
+platform has used yet, extending D036's precedent. The existing site-wide
+`count.completed`/book-stock variance flow (flow #3) is entirely untouched. Six open
+items logged in P032 (platform-wide scope of the container cross-reference, location
+granularity as an ops decision, projection refresh cadence/staleness untuned, an
+incomplete write-path audit, the baseline's inherent dependence on write-path
+discipline, and SGLN/location-tagging left unevaluated) -- confidence rated medium,
+capped by this being the platform's first true continuously-materialized projection
+with no prior operational tuning precedent, and by the container fix's partial
+(single-flow) scope. Does not contradict D032, D033, D034, D035, or D036 -- extends
+D032's `GateSession`-family invariant pattern to a genuinely new sibling type, and is
+the first consultation to make a second, independent flow consume D036's
+container-contents relationship._

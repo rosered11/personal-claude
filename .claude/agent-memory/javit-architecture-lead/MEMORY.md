@@ -2,5 +2,5 @@
 - [inbox/oms/req.md Gets Reused](inbox-oms-req-path-reused.md) — same inbox path has held unrelated problems twice; always re-read fresh, never assume via path alone.
 - [No Task Tool / Heredoc Size Limit](no-task-tool-large-heredoc-limit.md) — must simulate pipeline directly and write KB files via chunked Bash heredocs (forward-slash paths only).
 - [PTL Warehouse Lineage](ptl-warehouse-lineage.md) — inbox/push-to-light/ is CMG's Put-to-Light system, unrelated to Sprint-OMS; anchor at P026/D031/S031, pptx needs pre-extraction.
-- [RFID Event Platform Lineage](rfid-warehouse-lineage.md) — third distinct KB lineage (not PTL, despite shared warehouse-management tag); two entries now: P027/D032/S032, P028/D033/S033.
+- [RFID Event Platform Lineage](rfid-warehouse-lineage.md) — third distinct KB lineage (not PTL); six entries now, anchor P027/D032/S032, latest P032/D037/S037.
 - [Recurring Lens-Pairing Patterns](lens-pairing-patterns.md) — "blend by layer" vs "blend by decision-vs-transport" vs "evaluate-and-reject"; EDA vs Hexagonal for transport-protocol problems.

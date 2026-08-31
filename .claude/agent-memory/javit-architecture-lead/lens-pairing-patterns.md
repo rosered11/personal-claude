@@ -69,3 +69,87 @@ locking in a blend, check whether the problem actually contains sub-cases with
 different evidence/locality availability that would be better served by branching the
 chosen lenses' application rather than applying them uniformly. Watch for whether this
 becomes a recurring shape the way "blend by concern" did across D030/D031/D032.
+
+**Update (2026-08-24, D035)**: a fifth recurring shape has emerged --
+
+- **Premature-abstraction judgment** (D035: DDD in-aggregate extension vs Hexagonal
+  strategy port) -- neither lens disagreed about *what* the system should be able to do
+  (support N pluggable manifest-resolution mechanisms); they disagreed about *when* that
+  capability earns a formal abstraction boundary versus staying an explicit branch in the
+  aggregate that already owns the concern. This is a fundamentally different axis from
+  the four above (none of which were about abstraction timing) and won't show up unless
+  a problem involves extending an *already-twice-branched* mechanism a third time. DDD
+  won by directly following the problem's own steer to reuse an already-proven pattern
+  rather than build new abstraction for exactly 3 known, stable variants; Hexagonal's
+  port insight was deferred with an explicitly named future trigger, not rejected --
+  the same "fold in, don't discard" discipline as every other blend in this KB, just
+  applied to a *when*, not a *what*.
+
+**Also worth tracking**: D035 is this KB's second explicit YAGNI deferral (after D032
+Addendum 3's manifest-chunking deferral) -- both share the shape "name the exact future
+trigger condition, then explicitly decline to build for it now." When evaluating a
+Hexagonal-port-vs-simpler-alternative pairing, check whether the problem is really
+asking "should this be a port" or "should this be a port *yet*" -- the latter has a
+different, narrower resolution (defer with a named trigger) than an outright reject.
+
+**Update (2026-08-24, D036)**: a sixth recurring shape has emerged --
+
+- **First-class modeled entity vs. bidirectional-indexing/query-shape problem**
+  (D036: DDD vs CQRS) -- neither lens disagreed about what data needed to exist
+  (a container-contents relationship); they disagreed about whether it needed an
+  aggregate/invariant owner at all, or was purely a query-shape problem best solved
+  by scoping which query directions get which fanout treatment. This axis only
+  surfaces when a requirement explicitly names two distinct, asymmetric query
+  directions (here: "what is inside this box" needed at the edge in real time, vs.
+  "which box is this item in" needed only centrally, non-real-time) -- watch for that
+  shape (a stated bidirectional lookup with different latency/locality needs per
+  direction) as the trigger for considering CQRS as a contrasting lens, not just
+  "read-heavy vs write-heavy" in the generic sense. DDD won as primary because the
+  actual read/write volume didn't justify CQRS's fuller "two independently maintained
+  projections" machinery (infrequent writes, simple indexed lookups), but CQRS's
+  fanout-scope discipline (push only the direction actually needed at the edge) and
+  write-boundary validation discipline were folded in anyway -- same "fold in, don't
+  discard" pattern as every other blend in this KB, just applied to a *query-routing*
+  question rather than a *decision-ownership* or *abstraction-timing* one.
+
+**Running tally of axes seen so far, for quick reference when briefing lens-determiner:**
+decision-vs-transport (D031/D032/D034), evaluate-and-reject (D033), layer (D030),
+consistency-tolerance-before-irreversible-action (D034, a refinement of decision-vs-
+transport), premature-abstraction/when (D035), query-shape/fanout-asymmetry (D036).
+Before assuming a problem needs a *new* axis, check whether it is actually a variant
+of one already on this list -- new axes have shown up roughly once per platform-
+extension problem so far, not on every consultation.
+
+**Update (2026-08-24, D037)**: a seventh recurring shape has emerged, and
+the second time DDD-vs-CQRS has been used on this platform (after D036) --
+
+- **Declared-document reuse vs. self-asserted materialized state**
+  (D037: DDD in-aggregate-family reuse vs CQRS projection ownership) --
+  distinct from D036's axis (whether a relationship needs an invariant
+  owner, triggered by two named asymmetric query directions). D037's axis
+  is triggered by a different signal: an "expected list" whose source is
+  not an externally-declared document (every prior manifest on this
+  platform) but the platform's own continuously-changing state about
+  itself. Neither lens disagreed that `GateSession`'s invariant-enforcement
+  *shape* should be reused (DDD's contribution); the genuine disagreement
+  was implicit in the problem itself -- CQRS's read-model-from-events
+  discipline turned out to be the only available answer to "how do you
+  produce this kind of expected list at all," making it essential
+  infrastructure rather than an optional companion insight, a stronger
+  form of "fold in, don't reject" than any prior blend (the winning DDD
+  design is not just enriched by CQRS, it is *unbuildable* without it).
+  A second concrete lesson: CQRS's projection could resolve D036's
+  still-open container-interaction risk *by construction* (joining
+  container_contents at projection-build time) in a way DDD's own
+  in-aggregate reuse could not have discovered on its own -- watch for this
+  pattern again: a projection built with full central-database join access
+  can sometimes structurally close a risk that edge-side cross-referencing
+  can only patch procedurally.
+
+**Running tally of axes seen so far, for quick reference when briefing
+lens-determiner:** decision-vs-transport (D031/D032/D034), evaluate-and-
+reject (D033), layer (D030), consistency-tolerance-before-irreversible-
+action (D034, a refinement of decision-vs-transport), premature-abstraction/
+when (D035), query-shape/fanout-asymmetry (D036), declared-document-vs-
+self-asserted-state (D037, DDD-vs-CQRS used a second time -- check the
+*axis*, not just the lens names, before assuming a repeat pairing is stale).

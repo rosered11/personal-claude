@@ -97,3 +97,57 @@ Rule for future RFID/edge-gate/tag-verification problems:
   problems so far are invariants owned *within a single platform's own service*
   (Event Processor), which is a DDD aggregate question, not a cross-system orchestration
   question.
+
+- P031/D036 (RFID container-level EPC/SSCC modeling -- container identity plus a
+  queryable relationship to the item-level EPCs packed inside, extending the RFID
+  Event Platform's GateSession Header-validation branch for the first time since
+  D032 Addendum 10 introduced it): Domain-Driven Design vs CQRS -- a pairing not
+  previously used on this platform (P027/P030 both used DDD vs a manifest-resolution-
+  strategy contrast). DDD won as primary (container identity/contents modeled
+  relationally, owned by Serialization Service like every other identity table), but
+  CQRS's two sharpest insights were folded in: asymmetric edge fanout (only the
+  container-to-contents query direction is pushed to the edge, since that is the only
+  direction GateSession needs at zero-delay; the reverse item-to-container lookup
+  stays central-only) and write-boundary completeness validation (count/checksum on
+  the new ContainerPackedEvent, reusing D032 Addendum 1's pattern). kb-search top
+  matches (P030, P027) were both ~0.6 overlap -- high but below the 0.8 reuse-avoidance
+  threshold -- so a fresh pairing was still appropriate rather than mandatory.
+
+Rule for future RFID/container/composite-identity problems:
+- Use Domain-Driven Design vs CQRS specifically when a requirement names two distinct,
+  asymmetrically-scoped query directions over the same relationship (one needed at the
+  edge in real time, one needed only centrally/non-real-time) -- this is a different
+  trigger from the DDD-vs-EDA "decision vs transport" pairing (P027/D032) and the
+  DDD-vs-Hexagonal "premature abstraction" pairing (P030/D035). Expect DDD to win the
+  primary data-ownership question whenever the actual write volume is low/simple enough
+  that CQRS's full "separately maintained projections" machinery would be overkill, but
+  still fold in CQRS's fanout-scope discipline (push only what the real-time consumer
+  needs) rather than defaulting to "push everything everywhere" the way every prior
+  manifest type on this platform did.
+
+- P032/D037 (RFID location-scoped cycle count -- baseline is the platform's own
+  last-known state, `epc_registry`, not an externally-declared document like every
+  prior GateSession expected list): Domain-Driven Design vs CQRS -- the same pair as
+  P031/D036, but a fresh axis: not "two asymmetrically-scoped query directions over
+  one relationship" (D036's trigger), but "is this expected list a declared document
+  like every prior manifest, or a continuously-live state the platform asserts about
+  itself" (triggered by there being no external declaring system at all for this kind
+  of expected list). DDD won primary for invariant enforcement (`LocationCountSession`,
+  a new GateSession-sibling type, not a fifth `GateSession.OpenForXxx` mode, since a
+  continuously-refreshed snapshot has no consumed-once lifecycle a declared manifest
+  has), but CQRS's projection mechanism was adopted as essential infrastructure, not
+  an optional companion -- the winning design is unbuildable without it, a stronger
+  form of "fold in" than any prior blend on this platform. kb-search top match was
+  P031 at ~0.6 overlap, below the 0.8 reuse-avoidance threshold.
+
+Rule for future RFID/self-derived-baseline problems:
+- Use Domain-Driven Design vs CQRS a *second* time only after confirming the
+  triggering signal differs from every prior occurrence -- check "two named
+  asymmetric query directions" (D036's trigger) vs "no external declaring document
+  exists for this expected list" (D037's trigger) before assuming a repeat pairing is
+  warranted; do not default to this pair just because it worked last time on this
+  platform.
+- When CQRS's read-model mechanism is the *only* available answer to a stated
+  question (not just an enrichment of the winning lens's design), say so explicitly
+  in the decision text -- this is a stronger form of "fold in, don't reject" than the
+  platform's prior blends, and should not be understated as a mere companion insight.

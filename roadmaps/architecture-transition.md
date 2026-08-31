@@ -1,8 +1,8 @@
 # Architecture Transition Roadmap
 **Goal:** Backend Developer → Software Architecture Specialist
 **Current Phase:** Intermediate
-**Last Updated:** 2026-08-17
-**Consultation Count:** 12
+**Last Updated:** 2026-08-24
+**Consultation Count:** 15
 
 ---
 
@@ -94,6 +94,71 @@ business property (like "is the transaction reversible" or "is a human still pre
 would expand a design space the way it did here, rather than only asking "which existing
 FailSafeMode-style enum applies."
 
+Consultation 13 (P030/D035, 2026-08-24) is your fourth RFID-domain consultation, and the
+first one that revisits and partially invalidates a specific prior decision (D032
+Addendum 5/6/7) from real field data, rather than extending the platform into
+undesigned territory. lens-determiner paired Domain-Driven Design against Hexagonal
+Architecture on a genuinely new axis: not invariant-ownership-vs-transport (D032), not
+transport-vs-transport (D033), not consistency-tolerance-before-an-irreversible-action
+(D034), but a premature-abstraction question -- does a third known variant of the same
+concern (how GateSession resolves its manifest) earn a formal strategy interface, or
+stay an explicit branch in the aggregate that already owns it. DDD won by directly
+following the problem's own steer to reuse an already-proven pattern (Addendum 5's
+nullable-key branch) rather than build new abstraction for exactly three known, stable
+modes; Hexagonal's insight was not rejected, it was folded in as an explicitly named
+future trigger (promote to a strategy port the moment a confirmed fourth mode appears) --
+the same YAGNI discipline the platform used once before (D032 Addendum 3, declining to
+build speculative manifest chunking). The more important skill on display here is
+elsewhere, though: this is your first consultation where a prior KB decision's own
+open item (P027 #12, logged as "unvalidated" ten days earlier) was confirmed true or
+false by real operations data, and the resulting decision had to explicitly state
+whether it superseded, deprecated, or merely extended the prior one -- it chose none of
+the first two, keeping D032 Addendum 5/6/7 as a fully equal, per-site-configurable
+alternative rather than assuming one site's field data generalized platform-wide. Next
+step: notice that this is a sharper version of the reconciliation skill first named in
+P018/D023 ("confirming, extending, or challenging" a prior decision) -- practice writing
+that one-sentence stance explicitly, before the pipeline runs, whenever a new
+consultation's problem statement references a KB decision's own previously-logged open
+item.
+
+Consultation 14 (P031/D036, 2026-08-24) is your fifth RFID-domain consultation
+(narrative entry added retroactively alongside Consultation 15 -- see Exposure Log and
+Recent Learning Opportunities below for the full detail already captured at the time).
+Briefly: lens-determiner paired Domain-Driven Design against CQRS for the first time on
+this platform, triggered by a requirement naming two asymmetrically-scoped query
+directions over one relationship (container contents). DDD won as sole primary; CQRS's
+fanout-scope and write-boundary-validation insights were folded in without adopting its
+full two-projection machinery. Confidence was explicitly capped at medium because
+synthesizing the two lenses surfaced a genuine, previously-unknown correctness risk
+(sealed-container contents falsely appearing missing) that neither lens was asked about
+directly.
+
+Consultation 15 (P032/D037, 2026-08-24) is your sixth RFID-domain consultation, and the
+third and last of three queued from one real warehouse site visit (after P030/D035 and
+P031/D036). lens-determiner paired Domain-Driven Design against CQRS a second time --
+the same pair as D036, and the first time you have needed to actively check whether a
+repeated lens pairing is illuminating a genuinely fresh axis or just reusing what worked
+last time. It was fresh: D036's axis was "does this relationship need an invariant owner,
+or is it a bidirectional query-shape problem" (triggered by two named query directions);
+D037's axis was "is this expected list a declared document like every prior manifest, or
+a continuously-live state the platform asserts about itself" (triggered by there being no
+external declaring system at all). DDD won primary for invariant enforcement -- a new
+`LocationCountSession` type reusing `GateSession`'s zero-loss/zero-delay/fail-safe shape,
+deliberately NOT a fifth `GateSession.OpenForXxx` resolution mode, because a
+continuously-refreshed snapshot has no consumed-once lifecycle the way a declared
+manifest does. The more interesting move: CQRS's mechanism (a materialized projection
+folded from write-path events) was not just folded in as a nice-to-have, it was the
+*only* available answer to the problem's hardest question ("how is a self-asserted
+baseline produced at all") -- a stronger form of "fold in, don't reject" than any prior
+blend on this platform, since the winning design would be structurally incomplete
+without it, not merely enriched by it. It also closed D036's own still-open
+container-interaction risk for this one flow, by construction, simply because a
+projection built centrally can join tables an edge-side cross-reference rule never
+could. Next step: before your next consultation, when two lenses recur from a prior
+decision, write down the *specific triggering signal* that made each lens relevant last
+time, then check whether this problem produces the same signal or a different one --
+that check is what separates deliberate reuse from pattern-matching on lens names alone.
+
 ## Skill Domains
 
 ### Distributed Systems
@@ -106,8 +171,8 @@ FailSafeMode-style enum applies."
 - [x] Single-writer enforcement — encountered in D020 (FOR UPDATE SKIP LOCKED for outbox worker; Kubernetes single-replica deployment constraint)
 
 ### Data Architecture Patterns
-- [x] CQRS (Command Query Responsibility Segregation) — separating reads from writes — **encountered in D018 (OMS read/write split: command handlers vs order_status_view projections)**
-- [ ] Event Sourcing — state as a sequence of events
+- [x] CQRS (Command Query Responsibility Segregation) — separating reads from writes — **encountered in D018 (OMS read/write split: command handlers vs order_status_view projections). Extended in D036 (RFID container-contents relationship): CQRS's read/write split reasoning applied without adopting the full pattern -- fanout-scope discipline (push only the query direction a real-time consumer needs) borrowed into a single relational table rather than building two separately maintained projections, since actual write volume did not justify the fuller machinery**
+- [x] Event Sourcing — state as a sequence of events — **first genuine application in D037 (RFID location_contents): a materialized read projection folded from the same write-path events that already update epc_registry, not a live query against the write model -- the platform's first continuously-refreshed projection, distinct from every prior bounded/versioned MovementManifest**
 - [ ] Database per service pattern
 - [ ] Polyglot persistence
 
@@ -240,6 +305,17 @@ FailSafeMode-style enum applies."
 | A third fail-safe outcome beyond FailOpen/FailClosed (PendingVerification) — made possible specifically because the actor and item are still physically present and the irreversible action (refund) has not yet occurred, unlike GateSession's gate-has-already-passed cases | 2026-08-17 | P029/D034/S034 | System Design Fundamentals | High |
 | Targeted, partition-routed cache invalidation (by originating site_id) as the event-driven half of a Saga+EDA blend, reusing D032's manifest pre-positioning transport for a removal instead of an addition | 2026-08-17 | P029/D034/S034 | Event-Driven Architecture | Medium |
 | Scoping a new short-lived ledger narrowly (return-window retention only) to patch a data-availability gap created by an earlier, deliberate storage-saving decision (CountOnly tracking mode), without reversing that decision | 2026-08-17 | P029/D034/S034 | Data Architecture Patterns | Medium |
+| Premature-abstraction judgment -- deferring a formal strategy port (Hexagonal) in favor of an explicit in-aggregate branch (DDD) for 3 known, stable variants, with an explicit named trigger for when to promote | 2026-08-24 | P030/D035/S035 | Architectural Patterns | High |
+| Reconciling a new decision against a prior decision's own logged open item -- confirming P027 Open Item #12 true via real field data, then explicitly choosing "retain as per-site alternative" over "supersede" or "silently deprecate" | 2026-08-24 | P030/D035/S035 | Organizational & Communication Skills | High |
+| Resolution-key ambiguity as a distinct design hazard from resolution absence -- keying by ManifestId instead of PoRef specifically because multiple concurrent partial-delivery manifests can share one PoRef | 2026-08-24 | P030/D035/S035 | System Design Fundamentals | Medium |
+| DDD vs CQRS as a fresh contrasting pair -- triggered by a requirement naming two asymmetrically-scoped query directions (edge real-time vs central non-real-time) over the same relationship, a different axis from decision-vs-transport or premature-abstraction pairings seen before | 2026-08-24 | P031/D036/S036 | Architectural Patterns | High |
+| Borrowing a lens's read-model discipline without adopting its full machinery -- CQRS's fanout-scope insight (push only the query direction the real-time consumer needs) folded into a single relational table instead of building two separately maintained projections, because actual write volume did not justify the fuller pattern | 2026-08-24 | P031/D036/S036 | Data Architecture Patterns | High |
+| Asymmetric read-model fanout -- deliberately NOT pre-positioning a read direction to every edge just because the platform's existing transport could carry it; scope what is pushed by what the real-time consumer actually needs, not by what is possible to push | 2026-08-24 | P031/D036/S036 | Data Architecture Patterns | Medium |
+| Surfacing a new correctness risk during synthesis rather than only solving the stated problem -- cross-referencing a new feature's output against an existing invariant (MissingExpectedEpcs) found a false-positive risk neither architect's brief asked about, downgrading decision confidence honestly instead of overselling completeness | 2026-08-24 | P031/D036/S036 | Organizational & Communication Skills | High |
+| Read-model materialization as the *only* available answer to a design question, not just an optional companion insight -- CQRS's projection mechanism was structurally necessary (the winning design is unbuildable without it), a stronger form of "fold in, don't reject" than any prior blend | 2026-08-24 | P032/D037/S037 | Data Architecture Patterns | High |
+| Reusing a lens pair (DDD vs CQRS) a second time and verifying the axis is fresh, not just reusing what worked last -- D036's axis was query-shape asymmetry; D037's was declared-document vs self-asserted continuous state, a different triggering signal entirely | 2026-08-24 | P032/D037/S037 | Architectural Patterns | High |
+| A projection built with full central-database join access closing a correctness risk *by construction* that edge-side procedural cross-referencing could only patch -- joining container_contents at projection-build time so a container's resolved contents propagate to its location automatically | 2026-08-24 | P032/D037/S037 | Data Architecture Patterns | High |
+| Recognizing when a new type should be a sibling to an existing aggregate rather than another branch inside it -- LocationCountSession reuses GateSession's invariant *shape* without being forced through GateSession's manifest-resolution abstraction, because the thing being resolved is a different kind of "expected list" (continuously live, never consumed) | 2026-08-24 | P032/D037/S037 | Architectural Patterns | Medium |
 
 ---
 
@@ -923,6 +999,180 @@ decision.
   blind spot" (what D034 did to CountOnly) and "supersede a decision" (what would be
   needed if CountOnly's core premise were wrong, not just incomplete for one new use
   case).
+
+---
+
+### Consultation: RFID Inbound Correlation Without Dock Scheduling (2026-08-24) -- KB: P030 / D035 / S035
+
+This is your fourth RFID consultation, and the first one triggered by a prior KB
+decision's own logged open item turning out to be true. Here is what to study:
+
+**1. Confirming an Open Item Is a First-Class Trigger for a New Consultation**
+P027 Open Item #12 was logged ten days earlier as an *unvalidated assumption*, not a
+known gap -- and this consultation exists because a real site visit went and checked it.
+The skill worth internalizing: an "unvalidated assumption" entry in a KB problem file is
+not decorative risk-logging, it is a standing question that should actively get asked of
+real operations, and when the answer comes back, it deserves its own consultation rather
+than a quiet code patch. Practice treating your own KB's open items as a live backlog,
+not an archive.
+- Study: re-read P027's Open Item #11 and #12 side by side with P030's Problem section --
+  notice how precisely the site-visit answer maps onto the exact risk #12 predicted.
+- Practice: for one open item in this KB you have not yet revisited, write the specific
+  question you would ask a real stakeholder to confirm or deny it.
+
+**2. When NOT to Build the Extensible Version**
+Hexagonal's `IManifestResolutionStrategy` port was the more "correct" long-term answer by
+a familiar-looking argument (open/closed principle, easier testing, matches D033/D030's
+precedent of reaching for a port at a volatility boundary) -- and it still lost, because
+only three modes exist today, all well understood, serving one validated site. This is a
+different lesson from D022 ("who else will call this?"): here the abstraction's *future*
+value is real and even named explicitly, just not yet earned. Learn to separate "this
+abstraction would help someday" from "this abstraction earns its cost today," and to
+write down the specific future trigger that would flip the answer, rather than leaving
+the decision to be silently re-litigated later.
+- Study: Martin Fowler's "YAGNI" article (martinfowler.com); re-read D032 Addendum 3's
+  "explicitly deferred" manifest-chunking call side by side with this one -- two
+  different domains, the same deferred-not-rejected shape.
+- Practice: next time you propose a port/strategy interface, write the exact condition
+  that would make today's simpler alternative wrong -- if you can't name one, that is a
+  sign the abstraction may not be earning its cost yet either.
+
+**3. Retained-as-Alternative Is a Third Option, Not a Compromise Between Two**
+The task explicitly offered three outcomes for D032 Addendum 5/6/7 (superseded,
+deprecated as one-of-N, or kept as a full alternative) -- and the chosen answer, "kept as
+a per-site-configurable alternative," is not a hedge between the other two, it is the
+option the Clarified Scope's own constraint ("do not assume this generalizes to every
+DC") directly implies once you take it seriously. Practice reading a problem's own scope
+constraints as load-bearing evidence for which of several plausible-sounding decision
+shapes is actually correct, not just as guardrails on what NOT to propose.
+- Practice: in your next consultation, before reading the decision, write down every
+  option a "supersede vs. extend vs. reject" framing could produce, then check which one
+  the problem's own constraints structurally force -- see if your prediction matches.
+
+### Consultation: RFID Container-Level EPC (SSCC) Modeling With Item-EPC Relationship (2026-08-24) -- KB: P031 / D036 / S036
+
+This is your fifth RFID consultation, and the second of three queued from the same
+real warehouse site visit (after P030/D035). Here is what to study:
+
+**1. A Forward-Looking Risk Note Becoming a Real Requirement**
+`manual/rfid-component-reference.md` Appendix 6 flagged SSCC-alongside-SGTIN reads as
+a plausible future direction, not a hypothetical curiosity, back when D032 Addendum 10
+was written -- and it turned out to be right within two weeks of real time. The skill
+worth internalizing: when you write "this isn't a problem today, but here is the
+concrete scenario where it would become one," that note is doing real work even if
+nobody acts on it immediately -- it is why this consultation could start from "we
+already know exactly what changes" instead of rediscovering the constraint from
+scratch.
+- Practice: next time you accept a scope-out decision (like D032 Addendum 10 rejecting
+  GRAI/GIAI/SGLN), write the one sentence that would tell a future you exactly which
+  scheme is most likely to come back as a real requirement, and why.
+
+**2. DDD vs CQRS -- A Genuinely New Axis, Not a Relabeled Old One**
+Every RFID lens pairing before this one either split "who decides vs how data moves"
+(D032) or "formal abstraction vs in-aggregate branch" (D035). This one split on
+something neither of those axes covers: whether a relationship needs an invariant
+owner at all, or is fundamentally a bidirectional-query-shape problem. The trigger
+that should make you reach for CQRS as a contrasting lens is specific -- a requirement
+naming two query directions with different latency/locality needs, not just "there is
+a read and a write."
+- Study: re-read D018's original DDD+CQRS blend (your very first consultation) side by
+  side with D036 -- notice D018 blended both because both were needed simultaneously,
+  while D036 chose DDD as sole primary and only borrowed CQRS's fanout-scope insight.
+  Same lens pair, structurally different resolution.
+- Practice: before your next consultation involving a relationship between two
+  entities, ask explicitly "are there two different query directions here with
+  different real-time needs?" -- if yes, CQRS belongs in the lens conversation even if
+  DDD ends up winning outright.
+
+**3. Confidence Is a Signal, Not a Formality -- Let a Newly Found Risk Lower It**
+D036 rated its own confidence medium, not high, specifically because synthesizing the
+two lenses' outputs surfaced a real, previously-unknown correctness risk (items inside
+a sealed container might falsely appear as missing) that neither individual lens
+evaluation was asked about. Downgrading confidence honestly when you find something
+mid-synthesis -- rather than quietly shipping a "high confidence" decision with an
+unresolved gap -- is itself an architecture skill, not just a hedge.
+- Practice: in your next decision, before assigning a confidence rating, explicitly
+  ask "did synthesizing these two lenses reveal anything neither one flagged on its
+  own?" -- if yes, that alone is often reason enough to cap confidence at medium.
+
+### Consultation: RFID Location-Scoped Cycle Count (2026-08-24) -- KB: P032 / D037 / S037
+
+This is your sixth RFID consultation, and the last of three queued from the same real
+warehouse site visit (after P030/D035 and P031/D036). Here is what to study:
+
+**1. When a Read-Model Projection Is the Only Answer, Not an Optional Insight**
+Every prior lens blend on this platform folded the non-primary lens's insight in as an
+enrichment -- useful, but the primary lens's design would have basically worked without
+it. D037 is different: `LocationCountSession` (the DDD half) literally cannot exist
+without something producing what it evaluates against, and CQRS's read-model-from-events
+discipline was the only mechanism on the table that answered "how do you produce a
+self-asserted expected list at all." Practice noticing the difference between "this
+lens's insight makes the design better" and "this lens's insight makes the design
+possible" -- the second case deserves to be described as essential infrastructure in
+your synthesis, not a companion finding.
+- Study: Greg Young's original CQRS paper, specifically the framing of a read model as a
+  *derived*, disposable projection rather than a second source of truth; Martin Fowler's
+  "Event Sourcing" article for the closely related idea of replaying events to build a
+  view.
+- Practice: in a system you know, find one place where a "read model" is actually just a
+  cached copy of a query result versus one that is genuinely folded from a sequence of
+  write-side events over time -- what would break if the underlying events were replayed
+  in a different order?
+
+**2. Reusing a Lens Pair a Second Time -- Verifying the Axis, Not the Names**
+D036 and D037 both paired DDD against CQRS. This is your first chance to practice a
+specific discipline: before assuming a repeated lens pairing is stale pattern-matching,
+name the *triggering signal* that made each lens relevant. D036's signal was a
+requirement naming two asymmetrically-scoped query directions over one relationship.
+D037's signal was the complete absence of an external declaring document for an expected
+list -- a different question entirely, even though the lens names are identical. Two
+consultations reaching for the same two lenses is only a red flag if the underlying
+question is also the same; here it was not.
+- Practice: next time a lens pair repeats in your own KB, write one sentence naming the
+  specific problem signal that triggered it each time, and check whether the two
+  sentences actually describe the same thing.
+
+**3. A Central Projection Can Close a Risk That Edge-Side Logic Can Only Patch**
+D036 flagged a real correctness risk (container-packed items falsely appearing missing
+from `MissingExpectedEpcs`) and proposed a *procedural* fix: downstream code must
+remember to cross-reference `ContainerReads` before flagging a shortage. D037 closes the
+same risk for its own flow *structurally* instead -- the projection-build query, running
+centrally with full access to both `epc_registry` and `container_contents`, simply joins
+them so a container's resolved contents already appear correctly in the baseline. No
+downstream consumer has to remember anything. This is a genuinely different class of fix
+from "add a check," and worth recognizing as its own move: when a system already has a
+place where you can compute something *before* it's needed, that is often more robust
+than instructing every future caller to check for it *after* the fact.
+- Study: the general principle of "make invalid states unrepresentable" (functional
+  programming literature, e.g. Scott Wlaschin's "Domain Modeling Made Functional") --
+  the same instinct applied here at the data-projection level rather than the type-system
+  level.
+- Practice: find one "downstream consumers must remember to check X" comment in a
+  codebase you own. Could the data itself be shaped, upstream, so X is no longer possible
+  to get wrong?
+
+**4. Introducing a New Sibling Type Instead of Forcing Reuse**
+Every prior `GateSession` extension on this platform (D032's original design, Addendum
+8's fourth flow, D035's third resolution mode, D036's SSCC branch) extended `GateSession`
+itself. D037 is the first time the right move was a new, sibling type
+(`LocationCountSession`) that reuses `GateSession`'s invariant *shape* without being
+forced through its `IManifestCache` abstraction -- because a continuously-live,
+self-asserted snapshot is not the same kind of thing as a declared, eventually-consumed
+manifest. This is a useful complement to D035's "when NOT to build the extensible
+version" lesson: sometimes the discipline runs the other way, and forcing a new concept
+through an existing abstraction because "it's nearby" is itself a design smell, not
+reuse.
+- Study: re-read D035's premature-abstraction reasoning side by side with D037's
+  sibling-type reasoning -- notice both are really the same question ("does this
+  variation belong inside the existing abstraction, or does it need its own"), just
+  answered in opposite directions depending on whether the underlying concept is the
+  same kind of thing or a genuinely different kind of thing.
+- Practice: next time you're tempted to add a fourth branch to an existing type instead
+  of creating a new one, write one sentence describing what makes the new case the *same
+  kind of thing* as the existing branches -- if you can't, that's a signal it may deserve
+  its own type instead.
+
+---
 
 ---
 

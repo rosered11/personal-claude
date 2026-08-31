@@ -27,3 +27,26 @@ than a content problem -- backslash paths and apostrophes were both wrongly susp
 environment, default to chunked `cat >>` appends into a `/tmp` (or scratchpad) file followed by a
 final `mv`, rather than one large heredoc. Always use `/d/workspace/...` style paths in Bash, never
 `D:\workspace\...`.
+
+**Update (2026-08-24)**: `python3` in this environment resolves to a native Windows
+`python.exe` via a pyenv-win shim (`which python3` -> `.../pyenv-win/shims/python3`),
+not an MSYS-aware binary. MSYS/Git-Bash only auto-translates `/d/...`-style paths for
+values that look like direct command-line arguments to a Windows executable -- a
+`/d/...` path embedded inside a Python string literal (e.g. `open("/d/workspace/...")`
+inside a heredoc passed to `python3 -`) is passed through unmodified and will raise
+`FileNotFoundError`, even though the identical path works fine for `cat`/`ls`/`mv` in
+the same Bash session. Confirmed by a direct `python3 -c "os.path.exists('/d/...')"`
+returning `False` for a file `ls` could see seconds earlier at the same absolute path.
+
+**Why:** wasted a tool call chaining a `cat > scratch-file <<EOF` and a `python3 -
+<<PYEOF` (which read that scratch file by its `/d/...` path) inside one Bash
+invocation -- the python3 step silently couldn't find the file it had just been handed,
+even though the file existed on disk by the time the command finished.
+
+**How to apply:** when a Python heredoc script needs to read/write a file, either (a)
+`cd` into the target directory first and use a bare relative filename (this already
+works -- confirmed via the `index.md`/`architecture-transition.md` edits in this same
+session, since `cd` sets the process's real Windows working directory, which `python3`
+inherits correctly), or (b) `cp` the file into the current working directory first,
+then reference it by relative name. Never pass a `/d/...`-style absolute path directly
+into a Python string in this environment.
