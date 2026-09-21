@@ -1,0 +1,7 @@
+- [PTL แยกออกจาก WES แล้ว](ptl-split-from-wes.md) — standalone ตั้งแต่ 2026-09-21 · ตอนกลับมาทำ WES อย่าลากตารางของ PTL กลับเข้าไป
+- [แผนที่เอกสาร PTL](ptl-design-knowledge-base.md) — gap log G1–G64 คือหัวใจ อ่านก่อนออกแบบอะไรใหม่
+- [ทีมและเส้นแบ่งของงาน PTL](ptl-teams-and-boundaries.md) — WMS คนละทีมคนละฐาน · vendor ยังไม่เริ่มเขียนโค้ด ⇒ ยังแก้สัญญาได้อิสระ
+- [พิสูจน์ด้วยของที่รันจริง](prove-with-a-running-system.md) — ทุกครั้งที่รันจริงเจอบั๊กที่อ่านโค้ดไม่เจอ
+- [สเปกต้องบอกว่าใครเป็นเจ้าของอะไร](specs-must-say-who-owns-what.md) — source · เปลี่ยนเมื่อไร · เคลียร์เมื่อไร · ใคร implement ที่ไหน
+- [ของที่เลิกใช้ให้ลบ ไม่ใช่เก็บ](delete-dead-things-not-archive.md) — และตามเก็บ reference ที่ชี้ไปหามันให้หมด
+- [memory อยู่ใน repo](memory-lives-in-the-repo.md) — ของจริงที่ `.claude/memory/` (git track) · path ของ runtime เป็น junction ชี้มาที่นี่
