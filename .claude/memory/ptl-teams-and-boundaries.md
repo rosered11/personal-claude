@@ -23,6 +23,13 @@ metadata:
 - ถ้าทีม WMS ไม่ทำบางอย่าง (เช่น จอ alert) เราต้องรับมาทำที่ฝั่งเราแทน — ทำไปแล้วใน G61/G62
 - **สิ่งเดียวที่ขอจากทีม WMS แล้วขาดไม่ได้**: คง `reason` ไว้ใน response ของ `POST /internal/batch-events` (ชั้น A ของ alert ทั้งหมดพึ่งค่านี้)
 - **ยังมี 3 เรื่องที่เรามองไม่เห็นและต้องตกลงว่าใครรับ**: `batch_overdue_unassigned` · `return_lines_pending` · `leftover_on_hold`
-- 🔴 **ต้องแจ้งทีม WMS** ว่า field ใน `POST /internal/batch-events` เปลี่ยนชื่อ `event_id` → `message_id` แล้ว (G63)
+- 🔴 **ค้างอยู่: ต้องแจ้งทีม WMS เรื่องสัญญาที่เปลี่ยนไป 3 ข้อ** (ยังไม่ได้แจ้ง)
+  1. `POST /internal/batch-events` — field `event_id` → **`message_id`** (G63)
+  2. `POST /internal/work-messages` — field `routing_key` → **`lane`** (G67) · และคอลัมน์ `dispatch_work_outbox.routing_key` ก็เปลี่ยนชื่อตาม
+  3. **ตัด `adapter_key` ออกจาก payload** แล้ว (G68) · `schema_version` เป็น **`1.0`** ไม่ใช่ `4.1`
 
-ดู [[ptl-design-knowledge-base]] · [[ptl-split-from-wes]]
+**vendor หลายเจ้าพร้อมกัน — รับได้อยู่แล้ว** (G68) · รอยต่อคือ **`site`**: 1 ไซต์ = 1 vendor = exchange/คิว/credential/consumer/`station_code` ชุดของตัวเอง
+⇒ ปัญหาของเจ้าหนึ่งไม่ลามข้ามไปอีกเจ้า · ทะเบียนว่าไซต์ไหนของใครและอยู่สัญญาเวอร์ชันไหนอยู่ที่ **`spc.site_vendor`** (จอ alert แสดงคอลัมน์ "ดูแลโดย")
+· ที่ยังไม่ได้ทำเพราะรอให้มีเจ้าที่ 2 จริงก่อน: **SLA ต่อไซต์** (`PTL_SLA_*` ตอนนี้เป็นค่าเดียวทั้งระบบ)
+
+ดู [[ptl-design-knowledge-base]] · [[ptl-split-from-wes]] · [[vendor-docs-style]]
