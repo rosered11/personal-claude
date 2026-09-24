@@ -1,8 +1,8 @@
 # Architecture Transition Roadmap
 **Goal:** Backend Developer → Software Architecture Specialist
 **Current Phase:** Intermediate
-**Last Updated:** 2026-08-24
-**Consultation Count:** 15
+**Last Updated:** 2026-09-22
+**Consultation Count:** 16
 
 ---
 
@@ -159,6 +159,34 @@ decision, write down the *specific triggering signal* that made each lens releva
 time, then check whether this problem produces the same signal or a different one --
 that check is what separates deliberate reuse from pattern-matching on lens names alone.
 
+Consultation 16 (P033/D038, 2026-09-22) is your first consultation entirely outside the
+Sprint-OMS/ETL and RFID/PTL warehouse lineages, and your first pure *capacity-planning*
+request rather than an incident, a design brief, or a codebase audit: "I need to size an
+Elastic deployment on Azure for procurement and don't know where to start." No source
+systems, volumes, retention, or query patterns were supplied -- the problem itself was
+the absence of a starting methodology. lens-determiner paired CQRS against Event-Driven
+Architecture on a genuinely new axis for this KB: not invariant-ownership-vs-transport,
+not premature-abstraction, not query-shape asymmetry, but sizing *scope* -- whether a
+data store's default posture should be a minimal, query-driven read-model projection or
+a full-fidelity, volume-driven event/log sink, since that single choice produces two
+different storage formulas for the same data. EDA won as the primary sizing engine for a
+sharper reason than usual: not because its mechanism was structurally superior, but
+because its required inputs (throughput, event size, retention) were answerable *today*
+while CQRS's required inputs (concrete query/filter patterns) were not -- a case where
+"which lens can produce an actionable output from the inputs actually on hand" decided
+the winner, distinct from every prior deciding factor in this KB (promise-only-one-lens-
+can-make in D032/D033, consistency-tolerance in D034, abstraction-timing in D035,
+query-shape in D036, necessity-not-optionality in D037). CQRS was not discarded -- its
+scoping discipline was folded in as a mandatory per-source gate (classify every
+candidate index FULL_MIRROR or SCOPED_PROJECTION before sizing it), preventing the
+primary lens's own likeliest failure mode (blind full-fidelity indexing of everything)
+while still letting genuinely undefined sources default safely to full fidelity rather
+than blocking the whole worksheet. Next step: notice that this consultation had no real
+numbers to work with at all -- practice recognizing, before the pipeline runs, when a
+request's real blocker is "no methodology exists yet" rather than "the wrong option was
+chosen," since the deliverable in that case is a repeatable worksheet/process, not a
+single answer.
+
 ## Skill Domains
 
 ### Distributed Systems
@@ -224,8 +252,9 @@ that check is what separates deliberate reuse from pattern-matching on lens name
 - [ ] Managed services vs. self-hosted tradeoffs
 - [ ] Multi-region and disaster recovery patterns
 - [ ] Infrastructure as Code concepts
-- [ ] Cost modeling for architecture decisions
+- [x] Cost modeling for architecture decisions — **first applied in D038 (Elastic/Azure sizing): translating a storage-footprint estimate into a procurement-ready number required separating hot-tier (vCPU/RAM-driving) from warm/cold-tier (disk-SKU-driving) capacity, since infra buys different Azure node types for each**
 - [x] Kubernetes deployment topology for stateful workers — **encountered in D020 (single-replica outbox worker with terminationGracePeriodSeconds, graceful shutdown via CancellationToken, vs stateless API replicas with HPA)**
+- [x] Data-store capacity-planning methodology — sizing a search/analytics store (Elasticsearch) from first principles when no query patterns or volumes are yet known — **first applied in D038: event-volume/retention-driven hot-warm-cold tiered sizing, gated by a per-source query-scope classification, chosen specifically because its inputs were answerable today while a purely query-driven sizing approach's inputs were not**
 
 ---
 
@@ -316,6 +345,11 @@ that check is what separates deliberate reuse from pattern-matching on lens name
 | Reusing a lens pair (DDD vs CQRS) a second time and verifying the axis is fresh, not just reusing what worked last -- D036's axis was query-shape asymmetry; D037's was declared-document vs self-asserted continuous state, a different triggering signal entirely | 2026-08-24 | P032/D037/S037 | Architectural Patterns | High |
 | A projection built with full central-database join access closing a correctness risk *by construction* that edge-side procedural cross-referencing could only patch -- joining container_contents at projection-build time so a container's resolved contents propagate to its location automatically | 2026-08-24 | P032/D037/S037 | Data Architecture Patterns | High |
 | Recognizing when a new type should be a sibling to an existing aggregate rather than another branch inside it -- LocationCountSession reuses GateSession's invariant *shape* without being forced through GateSession's manifest-resolution abstraction, because the thing being resolved is a different kind of "expected list" (continuously live, never consumed) | 2026-08-24 | P032/D037/S037 | Architectural Patterns | Medium |
+| Sizing-scope as a lens axis -- minimal query-driven projection (CQRS) vs full-fidelity volume-driven event/log sink (EDA), a fresh contrast not about invariant ownership, transport, or abstraction timing, but about how much of a source's data a store should hold at all | 2026-09-22 | P033/D038/S038 | Data Architecture Patterns | High |
+| Choosing a lens by "which one can act on the inputs available today," not by mechanism quality alone -- EDA won D038 because throughput/retention were answerable now while CQRS's query-pattern inputs were not, a new kind of deciding factor distinct from every prior blend in this KB | 2026-09-22 | P033/D038/S038 | Organizational & Communication Skills | High |
+| Mandatory per-item classification gate as a way to fold in a non-primary lens's discipline -- every candidate Elasticsearch index must pass a FULL_MIRROR-vs-SCOPED_PROJECTION check before sizing, so CQRS's scoping instinct constrains the winning EDA methodology instead of being an optional afterthought | 2026-09-22 | P033/D038/S038 | Data Architecture Patterns | Medium |
+| Hot/warm/cold tiered capacity sizing -- splitting a retention curve so hot-tier GB drives vCPU/RAM node sizing and warm/cold-tier GB drives disk-SKU choice, because a cloud procurement decision needs both numbers, not one blended total | 2026-09-22 | P033/D038/S038 | Cloud & Infrastructure | High |
+| Producing a worksheet/methodology instead of a number when the real blocker is "no capacity-planning process exists yet," not "the wrong option was chosen" -- the deliverable's shape itself is part of the architectural judgment | 2026-09-22 | P033/D038/S038 | Organizational & Communication Skills | Medium |
 
 ---
 
@@ -1173,6 +1207,84 @@ reuse.
   its own type instead.
 
 ---
+
+### Consultation: Elastic Data-Size Estimation for Azure Procurement (2026-09-22) -- KB: P033 / D038 / S038
+
+This was your first pure capacity-planning consultation -- no incident, no design brief,
+no codebase audit, just "I need to size a data store for a procurement decision and
+don't know where to start." That absence of a starting methodology *was* the problem.
+Here is what to study:
+
+**1. A New Lens Axis: Sizing Scope, Not Invariant Ownership**
+Every prior RFID/PTL lens pairing in this KB (D031-D037) asked "who owns the invariant"
+or "how does data move" or "does this deserve a formal abstraction." D038 asked a
+different question entirely: "how much of a source's data should a store hold at all."
+CQRS's answer (only what a known query needs) and EDA's answer (everything, for
+full-fidelity replay) are not competing implementations of the same idea -- they produce
+two structurally different storage formulas. Recognizing that a new problem needs a
+*new kind* of contrast, not a reused pairing, is a skill in its own right.
+- Study: re-read D038's `contrast_rationale` side by side with D036's ("first-class
+  entity vs. query-shape problem") -- both are about *what belongs in the data model*,
+  but D036 asks whether a relationship needs an owner, while D038 asks how much of a
+  document's fidelity is worth persisting at all.
+- Practice: next time two lenses are proposed, write one sentence naming what each
+  lens's core mechanism actually *produces* (an owner? a formula? a boundary?) before
+  judging which one wins -- D038's decision hinged on comparing two formulas' required
+  inputs, not two mechanisms' elegance.
+
+**2. Choosing a Lens by Input Availability, Not Mechanism Quality Alone**
+EDA did not win D038 because volume-driven sizing is inherently better than query-driven
+sizing -- it won because its required inputs (events/sec, average event size, retention
+days) were answerable from what the requester already had, while CQRS's required input
+(known query/filter patterns) was not. This is a distinct, practical decision criterion
+from every deciding factor seen so far in this KB (which lens can make a promise the
+other cannot, how much eventual consistency a flow tolerates, whether an abstraction is
+premature). In real consulting work, "which option can I actually act on with the
+information in front of me today" is frequently the deciding question, especially for
+planning/estimation work rather than correctness/reliability work.
+- Study: any capacity-planning or estimation methodology reading (e.g. Google's SRE
+  workbook chapter on capacity planning) will repeatedly hit this same tension: precise
+  methodologies often require inputs you don't have yet, while approximate methodologies
+  that use available inputs get you unblocked today.
+- Practice: next time a request has genuinely no numbers to work with, ask explicitly
+  "which of my candidate approaches can produce a defensible number from what's already
+  measurable, vs. which one requires a design exercise that hasn't happened yet" before
+  picking a primary lens.
+
+**3. Elasticsearch/Azure Capacity Sizing Fundamentals**
+S038 encodes three pieces of real Elastic/Azure sizing knowledge worth internalizing on
+their own, independent of the lens-pairing lesson above:
+- **Shard sizing**: Elastic's own guidance targets 10-50GB per primary shard; too many
+  small shards wastes cluster overhead, too few large shards limits parallelism and
+  recovery speed. S038 sizes shard count off the *hot* tier specifically, since that is
+  what active queries hit.
+- **Hot/warm/cold tiering (ILM)**: retention curves should be split into tiers because
+  they map to genuinely different Azure node types -- hot tiers need fast local
+  NVMe-backed compute for active indexing/querying, warm/cold tiers can move to cheaper
+  storage-optimized or object-storage-backed nodes. A single blended "total GB" number
+  is not enough for a real procurement conversation; infra needs the hot/warm/cold split.
+- **Index overhead**: indexed data is not the same size as source JSON -- inverted
+  indexes and doc-values add real overhead (S038 uses a 1.15x placeholder), and replica
+  count multiplies total stored bytes directly.
+- Study: Elastic's own official "Size your shards" and "Data tiers" documentation pages;
+  Elastic's ILM (Index Lifecycle Management) concept guide.
+- Practice: before this worksheet is used for real, replace its placeholder
+  `projection_ratio` and `index_overhead_factor` with values measured from an actual
+  index in this organization's environment (or a representative sample dataset), rather
+  than trusting the defaults.
+
+**4. Delivering a Methodology When the Real Blocker Is "No Process Exists Yet"**
+The most important non-technical judgment in this consultation was recognizing that the
+correct deliverable was a *worksheet the requester could populate*, not a single
+hardcoded storage number -- because the actual blocker stated in the request was "I
+don't know where to start," not "which of two known options is better." Producing a
+number would have been false precision; producing a repeatable, explicitly-gated
+methodology (with placeholder values clearly marked as placeholders) matches what was
+actually being asked for. This is worth naming as its own skill, distinct from picking
+the right lens.
+- Practice: next time a request states or implies "I don't know where to start" rather
+  than presenting two options to choose between, check whether the real deliverable
+  should be a decision-support process/tool rather than a single decision.
 
 ---
 

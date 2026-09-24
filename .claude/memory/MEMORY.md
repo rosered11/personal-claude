@@ -1,7 +1,8 @@
 - [PTL แยกออกจาก WES แล้ว](ptl-split-from-wes.md) — standalone ตั้งแต่ 2026-09-21 · ตอนกลับมาทำ WES อย่าลากตารางของ PTL กลับเข้าไป
-- [แผนที่เอกสาร PTL](ptl-design-knowledge-base.md) — gap log G1–G68 คือหัวใจ อ่านก่อนออกแบบอะไรใหม่
+- [แผนที่เอกสาร PTL](ptl-design-knowledge-base.md) — ภาพรวมระบบอยู่ที่ repo `ptl_worker` (`src/ptl-handover.md`) · gap log G1–G71 อยู่ที่ `ptl-decision-log.md` อ่านก่อนออกแบบอะไรใหม่ · โค้ดย้ายไป repo `ptl_worker` แล้ว
 - [กติกาเอกสารที่ส่งให้ vendor](vendor-docs-style.md) — ไม่มีร่องรอยภายใน · เรียกทิศทางจากมุมผู้อ่าน · แสดงเวอร์ชันที่เดียว
-- [ทีมและเส้นแบ่งของงาน PTL](ptl-teams-and-boundaries.md) — WMS คนละทีมคนละฐาน · vendor ยังไม่เริ่มเขียนโค้ด ⇒ ยังแก้สัญญาได้อิสระ
+- [แก้ app ของ PTL ต้องไปทำที่ repo ptl_worker](ptl-app-changes-go-to-ptl-worker-repo.md) — เปิด Claude Code ที่ `D:\workspace\ptl_worker` แล้วสั่งเป็นภาษาธรรมชาติ ปล่อยให้มันเลือก agent เองตาม CLAUDE.md
+- [ทีมและเส้นแบ่งของงาน PTL](ptl-teams-and-boundaries.md) — WMS คนละทีมคนละฐาน · โค้ด worker ย้ายไปอีกทีม (2026-09-23) · vendor ยังไม่เริ่มเขียนโค้ด ⇒ ยังแก้สัญญาได้อิสระ
 - [พิสูจน์ด้วยของที่รันจริง](prove-with-a-running-system.md) — ทุกครั้งที่รันจริงเจอบั๊กที่อ่านโค้ดไม่เจอ
 - [สเปกต้องบอกว่าใครเป็นเจ้าของอะไร](specs-must-say-who-owns-what.md) — source · เปลี่ยนเมื่อไร · เคลียร์เมื่อไร · ใคร implement ที่ไหน
 - [ของที่เลิกใช้ให้ลบ ไม่ใช่เก็บ](delete-dead-things-not-archive.md) — และตามเก็บ reference ที่ชี้ไปหามันให้หมด

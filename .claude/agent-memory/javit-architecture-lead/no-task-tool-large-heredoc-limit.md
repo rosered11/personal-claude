@@ -1,6 +1,6 @@
 ---
 name: no-task-tool-large-heredoc-limit
-description: This environment gives Javit no Task/Agent-spawning tool and no Write/Edit tool -- must simulate the whole pipeline directly and write files via Bash heredocs, which fail silently past a certain single-command length.
+description: Some sessions give Javit no Task/Agent-spawning tool and no Write/Edit tool (others do, per 2026-09-22 update -- check the actual tool list first) -- when absent, must simulate the whole pipeline directly and write files via Bash heredocs, which fail silently past a certain single-command length.
 type: feedback
 ---
 
@@ -50,3 +50,27 @@ session, since `cd` sets the process's real Windows working directory, which `py
 inherits correctly), or (b) `cp` the file into the current working directory first,
 then reference it by relative name. Never pass a `/d/...`-style absolute path directly
 into a Python string in this environment.
+
+**Update (2026-09-22)**: this Write/Edit-tool absence is NOT universal across every
+session -- confirmed in the P033/D038/S038 (Elastic sizing) consultation that Javit's
+tool list *did* include Write and Edit that time, and they worked normally (including
+`Edit` matching multi-hundred-line old_string blocks copied verbatim from a prior
+`Write`/`Read`, no heredoc chunking needed). One `Edit` call did fail with "String to
+replace not found" against text that, byte-for-byte per a follow-up `Grep -n`, was
+identical to what was passed -- retrying with a smaller, still-unique anchor (the last
+1-2 lines of the same block instead of the full multi-paragraph block) succeeded
+immediately. Root cause not conclusively isolated (possibly a large old_string length
+limit inside `Edit` itself, separate from the Bash heredoc limit above).
+
+**Why:** almost defaulted to the old chunked-heredoc workaround out of habit despite
+having a working `Edit` tool available, which would have been slower and added
+unnecessary risk of the backslash/path-mangling failure mode also documented in this
+file.
+
+**How to apply:** always check the actual tool list available in the current
+invocation before assuming Write/Edit are unavailable -- do not apply this memory's
+heredoc workaround by default. If Write/Edit are present, use them directly (Read the
+target file first if editing, per the Edit tool's own precondition). If a large `Edit`
+`old_string` match unexpectedly fails despite `Grep` confirming identical byte content,
+retry with a smaller, still-unique anchor (e.g. the final line or two of the target
+block) rather than assuming a content/whitespace mismatch.

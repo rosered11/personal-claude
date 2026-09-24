@@ -40,6 +40,7 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [P030](problems/P030-rfid-inbound-correlation-without-dock-scheduling.md) | RFID Inbound Gate/Session Correlation Without Dock Scheduling -- Receiving-Zone-to-PO Matching Invalidates D032 Addendum 5/6/7's Universal Assumption | rfid, edge-computing, gate-verification, manifest-sync, offline-first, warehouse-management, inbound-receiving, dock-scheduling, fail-safe, operational-validation | high | D035 | S035 |
 | [P031](problems/P031-rfid-container-sscc-item-epc-relationship.md) | Container-Level EPC (SSCC) Modeling With a Queryable Relationship to Item-Level EPCs | rfid, edge-computing, gate-verification, manifest-sync, offline-first, domain-driven-design, warehouse-management, sscc | high | D036 | S036 |
 | [P032](problems/P032-rfid-location-scoped-cycle-count-self-asserted-baseline.md) | Location-Scoped Cycle Count -- Deriving a Self-Asserted Expected-EPC Baseline From Platform-Owned State | rfid, edge-computing, offline-first, domain-driven-design, cqrs, warehouse-management, cycle-count, gate-verification | high | D037 | S037 |
+| [P033](problems/P033-elastic-data-sizing-azure-procurement.md) | Elasticsearch Data-Size Estimation for Azure Procurement | elasticsearch, azure, capacity-planning, data-sizing, cloud-infrastructure, observability, index-lifecycle-management | medium | D038 | S038 |
 
 ---
 
@@ -84,6 +85,7 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [D035](decisions/D035-rfid-zone-receiving-manifest-resolution-dock-alternative.md) | Manifest-Instance Resolution by Staff-Selected Delivery Reference (ManifestId) as a Third GateSession Resolution Mode, D032 Addendum 5/6/7 Retained as a Per-Site Alternative | Staff-selected ManifestId resolution (DDD, in-aggregate extension) for zone receiving, with dock-appointment gate+window resolution (D032 Addendum 5/6/7) kept as a per-site-configurable alternative, not superseded | P030 | rfid, edge-computing, gate-verification, manifest-sync, domain-driven-design, hexagonal-architecture, offline-first, fail-safe, warehouse-management, inbound-receiving | S035 |
 | [D036](decisions/D036-rfid-container-contents-ddd-scoped-edge-projection.md) | Container Identity + Container-Contents Relational Model, DDD-Owned With CQRS-Scoped Edge Fanout | Container registry/contents relational model (DDD, Serialization-Service-owned) with CQRS-scoped edge fanout (container-to-contents pushed to edge, item-to-container kept central-only) | P031 | rfid, edge-computing, gate-verification, manifest-sync, domain-driven-design, warehouse-management, sscc, cqrs | S036 |
 | [D037](decisions/D037-rfid-location-count-session-cqrs-projection-container-aware.md) | LocationCountSession -- GateSession-Sibling Aggregate (DDD) Fed by a Container-Aware CQRS Materialized Projection | LocationCountSession (DDD, GateSession-sibling) resolving via a container-aware location_contents materialized projection (CQRS), fanned out edge-scoped like every other GateSession-family cache | P032 | rfid, edge-computing, offline-first, domain-driven-design, cqrs, warehouse-management, cycle-count, gate-verification | S037 |
+| [D038](decisions/D038-elastic-event-volume-tiered-sizing-cqrs-gate.md) | Event-Volume-Driven Tiered Sizing, Gated by a CQRS Index-Scope Review | Event-Driven Architecture (throughput/retention-driven hot-warm-cold sizing) as the primary engine, gated by a mandatory CQRS per-source FULL_MIRROR-vs-SCOPED_PROJECTION classification | P033 | elasticsearch, azure, capacity-planning, data-sizing, cloud-infrastructure, observability, index-lifecycle-management, event-driven-architecture, cqrs | S038 |
 
 ---
 
@@ -124,6 +126,7 @@ Auto-maintained by `kb-writer-agent`. Do not edit manually.
 | [S035](snippets/S035-rfid-zone-receiving-manifest-resolution/) | Zone-Receiving Manifest Resolution -- Staff-Selected ManifestId as a Third GateSession Correlation Mode | C# | P030 | D035 |
 | [S036](snippets/S036-rfid-container-contents-gatesession-extension/) | Container-Contents GateSession Extension -- Header Branch, Container Registry, Scoped Edge Fanout | C# | P031 | D036 |
 | [S037](snippets/S037-rfid-location-count-session-cqrs-projection/) | LocationCountSession -- Container-Aware Location-Contents Projection + Missing-EPC Enforcement | C# | P032 | D037 |
+| [S038](snippets/S038-elastic-sizing-worksheet/) | Elastic Data-Sizing Worksheet -- Event-Volume-Driven, CQRS-Gated Hot/Warm/Cold Estimator | Python | P033 | D038 |
 
 ---
 
@@ -441,3 +444,35 @@ with no prior operational tuning precedent, and by the container fix's partial
 D032's `GateSession`-family invariant pattern to a genuinely new sibling type, and is
 the first consultation to make a second, independent flow consume D036's
 container-contents relationship._
+
+_Also 2026-09-22 -- added P033/D038/S038 from inbox/estimate-datasize-elastic/req.md,
+the KB's first Elasticsearch/Azure capacity-planning consultation and its first
+consultation outside both the Sprint-OMS/ETL and RFID/PTL warehouse lineages. Problem:
+the requester needs a data-sizing estimate for an Elastic deployment on Azure to hand
+to the infra team for procurement, but supplied no source systems, volumes, retention
+requirements, or query patterns -- an explicit "I don't know where to start" request
+rather than an incident or a researched design brief. kb-search against the existing
+32 problems / 37 decisions found no meaningful precedent -- top matches (P004, P022,
+P018) shared only the generic `observability` tag at ~0.11-0.14 overlap, well below the
+0.8 UPDATE threshold, correctly producing a new CREATE-mode record. lens-determiner
+paired CQRS against Event-Driven Architecture on a fresh axis not previously seen in
+this KB: not invariant-ownership-vs-transport, not premature-abstraction, but sizing
+*scope* itself -- whether Elasticsearch's default posture should be a minimal,
+query-driven read-model projection (CQRS) or a full-fidelity, volume-driven event/log
+sink (EDA), since the two produce materially different storage formulas. EDA won as the
+primary sizing engine specifically because its inputs (throughput, average event size,
+retention window) are answerable today, whereas CQRS's own inputs (concrete query/filter
+patterns) are not -- directly satisfying the constraint that the deliverable must
+resolve to concrete numbers now, not after a query-design exercise that has not been
+scheduled. CQRS's scoping discipline was not discarded, it was folded in as a mandatory
+per-source gate: every candidate index must be explicitly classified FULL_MIRROR or
+SCOPED_PROJECTION before its volume is computed, preventing EDA's own likely failure
+mode (blind "index everything" inflation) while still letting undefined-query sources
+default safely to full fidelity rather than blocking the whole worksheet. S038 ships a
+Python hot/warm/cold sizing worksheet (`elastic_sizing_worksheet.py`) implementing this
+gate, with Elastic's own 10-50GB/primary-shard guidance driving shard-count
+recommendations off the hot tier. Confidence rated medium and explicitly not high: the
+worksheet's structure is validated, but every number in its example `SOURCES` list is a
+placeholder, not a real measurement -- the single most sensitive unvalidated input
+(retention window and projection ratio) is named as the required next step before this
+worksheet is run for real._

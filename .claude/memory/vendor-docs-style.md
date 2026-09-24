@@ -23,4 +23,21 @@ metadata:
 
 **field ที่คนสับสนให้แยกเป็นหัวข้อของตัวเอง** พร้อมตาราง + ตัวอย่างเดินตัวเลขจริง ไม่ใช่ยัดเป็นแถวในตารางรวม — ทำแบบนี้กับ `version` (2.2), ตระกูล `qty` (2.3) และ routing key (`ptl-rabbitmq-topology.md` หัวข้อ 5) แล้ว และทุกครั้งมันขุดเจอบั๊กหรือข้อความที่ไม่จริงในสเปก (ดู [[specs-must-say-who-owns-what]])
 
-**ไฟล์ที่ต้องแก้พร้อมกันเสมอ 3 ตัว**: `ptl-batch-api-spec.md` (ต้นฉบับ) · `.apib` · `.html` — และตรวจ `.html` ด้วยเบราว์เซอร์จริงหลังแก้ (ดู [[prove-with-a-running-system]])
+**สัญญาฉบับเครื่องอ่านคือ AsyncAPI ไม่ใช่ API Blueprint แล้ว** `[2026-09-24]`
+
+`ptl-batch-api.apib` **ถูกลบทิ้ง** เพราะ API Blueprint อธิบายได้แต่ HTTP แต่สัญญานี้เป็น RabbitMQ ล้วน ⇒ ต้องปลอม `[POST]` + path ขึ้นมา ซึ่งทำให้ **เครื่องมือเข้าใจผิดว่าเป็น REST** (Apiary โชว์ปุ่มยิง · dredd/SDK generator สร้าง HTTP client ออกมาจริง) · แทนด้วย **`ptl-batch-api.asyncapi.yaml` (AsyncAPI 3.1)** ซึ่งครอบ **3 channel 13 ชนิดข้อความ** ได้ครบ (ของเดิมครอบแค่ 6 ชนิดขาขึ้น)
+
+```bash
+docker run --rm -v "//d/workspace/personal-claude/inbox/push-to-light:/w" -w /w   node:20-alpine npx -y @asyncapi/cli@latest validate ptl-batch-api.asyncapi.yaml
+```
+ผ่าน = `File ... is valid! ... don't have governance issues`
+
+**บทเรียนที่แพงที่สุดจากรอบนี้**: เครื่องมือ parse ผ่านไม่ได้แปลว่าเอกสารใช้ได้ — `.apib` เดิม **0 error 0 warning แต่ได้ 0 endpoint** มาตลอด เพราะรูปแบบพวกนี้ถือว่า markdown ที่ไม่เข้าแบบคือ "คำบรรยาย" ไม่ใช่ความผิด ⇒ **ต้องตรวจว่าได้ของออกมาครบตามจำนวนด้วยเสมอ** ไม่ใช่ดูแค่ error
+
+**ชุดไฟล์ส่ง vendor = 4 ตัว** `[2026-09-24]` — `ptl-batch-api-spec.md` (ต้นฉบับ ความจริงทั้งหมด) · `.asyncapi.yaml` (ให้เครื่องอ่าน) · `.html` (**ทำมือ** ให้คนอ่าน) · `.asyncapi.html` (**generate จาก `.yaml`** ห้ามแก้ด้วยมือ)
+
+แก้ `.yaml` เมื่อไร **ต้อง validate แล้ว generate `.asyncapi.html` ใหม่ทุกครั้ง** — คำสั่งเต็มอยู่ใน `README.md` หัวข้อ 6 · ไฟล์ที่อยู่ใน repo ตรงกับผลของคำสั่งนั้นทุก byte ⇒ generate แล้วได้ diff = มีคนแก้ด้วยมือ หรือ template เปลี่ยนเวอร์ชัน
+
+⚠️ `.asyncapi.html` หนัก **2.7 MB (เป็น JS 2.5 MB)** และ regenerate ทีนึงเปลี่ยนทั้งไฟล์ ⇒ **git จะโตเร็ว** · ถ้าวันหนึ่งรำคาญ ให้เลิก track แล้ว generate เอาตอนต้องใช้ (ผู้ใช้เลือกเก็บไว้ใน project เอง 2026-09-24 เพราะอยากเปิดได้ทันทีไม่ต้องรัน docker)
+
+**ไฟล์ที่ต้องแก้พร้อมกันเสมอ 3 ตัว**: `ptl-batch-api-spec.md` (ต้นฉบับ) · `.asyncapi.yaml` · `.html` — และตรวจ `.html` ด้วยเบราว์เซอร์จริงหลังแก้ (ดู [[prove-with-a-running-system]])

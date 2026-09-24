@@ -153,3 +153,42 @@ action (D034, a refinement of decision-vs-transport), premature-abstraction/
 when (D035), query-shape/fanout-asymmetry (D036), declared-document-vs-
 self-asserted-state (D037, DDD-vs-CQRS used a second time -- check the
 *axis*, not just the lens names, before assuming a repeat pairing is stale).
+
+**Update (2026-09-22, D038)**: an eighth recurring shape has emerged, on this
+KB's first non-OMS/ETL/RFID/PTL problem (Elastic/Azure capacity-planning for
+P033) --
+
+- **Sizing-scope: minimal query-driven projection vs full-fidelity
+  volume-driven retention** (D038: CQRS vs Event-Driven Architecture) --
+  neither prior "blend by X" shape applies: not invariant-ownership
+  (nothing to own here), not transport (both lenses agree data moves the
+  same way), not abstraction-timing (nothing being deferred), not
+  query-shape/fanout-asymmetry (only one query direction exists). The real
+  question was "how much of a source's data should a store hold at all,"
+  because CQRS's answer (only fields a known query needs) and EDA's answer
+  (everything, for full-fidelity replay/audit) produce two different
+  storage-sizing formulas for the same source. **A ninth, more general
+  lesson rides along with this one and is worth tracking independently of
+  the sizing-scope axis itself**: EDA won not because its mechanism was
+  better, but because *its required inputs were answerable from what the
+  requester already had* (throughput, event size, retention -- all
+  measurable today), while CQRS's required inputs (concrete query/filter
+  patterns) were not yet defined. This is a new category of deciding
+  factor -- "which lens can act on the inputs actually available" -- distinct
+  from every promise/tolerance/timing/necessity-based deciding factor listed
+  above, and is likely to recur specifically on planning/estimation-shaped
+  problems (as opposed to correctness/reliability-shaped ones), where a
+  request often supplies no concrete numbers at all. CQRS was still folded
+  in, not rejected: a mandatory per-source FULL_MIRROR-vs-SCOPED_PROJECTION
+  classification gate, preventing the winning EDA-driven methodology's own
+  likeliest failure mode (blind "index everything" inflation).
+
+**Running tally of axes, updated:** decision-vs-transport (D031/D032/D034),
+evaluate-and-reject (D033), layer (D030), consistency-tolerance-before-
+irreversible-action (D034), premature-abstraction/when (D035), query-shape/
+fanout-asymmetry (D036), declared-document-vs-self-asserted-state (D037),
+sizing-scope (D038, minimal-projection vs full-fidelity-retention) --
+plus a cross-cutting, non-axis deciding factor worth checking on every
+consultation: **input-availability** (does this lens's required input
+exist yet, independent of which mechanism is "better"), first decisive in
+D038 and likely to matter most on planning/estimation problems.

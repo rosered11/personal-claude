@@ -1,6 +1,7 @@
 - [Sprint-OMS Repo Lineage](sprint-oms-repo-lineage.md) — recurring OMS consultation thread, real source path, and precedent decisions (D020/D023/D025/D029) not to silently contradict.
 - [inbox/oms/req.md Gets Reused](inbox-oms-req-path-reused.md) — same inbox path has held unrelated problems twice; always re-read fresh, never assume via path alone.
-- [No Task Tool / Heredoc Size Limit](no-task-tool-large-heredoc-limit.md) — must simulate pipeline directly and write KB files via chunked Bash heredocs (forward-slash paths only).
 - [PTL Warehouse Lineage](ptl-warehouse-lineage.md) — inbox/push-to-light/ is CMG's Put-to-Light system, unrelated to Sprint-OMS; anchor at P026/D031/S031, pptx needs pre-extraction.
 - [RFID Event Platform Lineage](rfid-warehouse-lineage.md) — third distinct KB lineage (not PTL); six entries now, anchor P027/D032/S032, latest P032/D037/S037.
-- [Recurring Lens-Pairing Patterns](lens-pairing-patterns.md) — "blend by layer" vs "blend by decision-vs-transport" vs "evaluate-and-reject"; EDA vs Hexagonal for transport-protocol problems.
+- [Recurring Lens-Pairing Patterns](lens-pairing-patterns.md) — 9 axes incl. sizing-scope (D038) and input-availability deciding factor; EDA vs Hexagonal for transport-protocol problems.
+- [Elastic/Azure Capacity-Planning Lineage](elastic-azure-capacity-planning-lineage.md) — 4th distinct KB lineage, anchor P033/D038/S038, first pure planning (non-incident) consultation.
+- [No Task Tool Memory Is Session-Dependent](no-task-tool-large-heredoc-limit.md) — check actual tool list first; Write/Edit ARE sometimes available (confirmed 2026-09-22).
