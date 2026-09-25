@@ -1,6 +1,6 @@
 ---
 name: ptl-design-knowledge-base
-description: แผนที่เอกสาร PTL cross-dock — gap log G1–G71 คือหัวใจ อ่านที่นั่นก่อนตัดสินใจอะไรใหม่
+description: แผนที่เอกสาร PTL cross-dock — gap log G1–G88 คือหัวใจ อ่านที่นั่นก่อนตัดสินใจอะไรใหม่
 metadata: 
   node_type: memory
   type: reference
@@ -13,9 +13,10 @@ metadata:
 | ไฟล์ | คืออะไร |
 |---|---|
 | `ptl_worker/src/ptl-handover.md` 🔴 **อยู่คนละ repo** | **เริ่มที่นี่** `[ส่งมอบให้ทีม ptl_worker 2026-09-24 — ฝั่งเอกสารไม่มีสำเนาแล้ว]` — แผนที่ทั้งระบบใน 10 หัวข้อ (ระบบทำอะไร · 3 ฝ่าย · สถาปัตยกรรม · 8 กฎห้ามรื้อ · operations · แผนที่ไฟล์) |
-| `ptl-decision-log.md` | **หัวใจ — "ทำไม"** · **gap log G1–G71** ทุกข้อมี: ปัญหา / ผลกระทบ / สิ่งที่ตัดสิน / **ผลทดสอบจริง** · หัวข้อ 0 รวม **ข้อที่กลับคำ** ไว้ที่เดียว<br>`[2026-09-23]` แยกออกมาจาก `wes-batch-pull-design.md` แล้ว**ลบไฟล์เดิมทิ้ง** — ชื่อเดิมผิดทั้ง 2 คำ ("wes" แยกไปตั้งแต่ G64 · "pull" กลับเป็น push ตั้งแต่ G59) และครึ่งไฟล์เป็นสำเนาสัญญาที่ค้างเวอร์ชันเก่า |
+| `ptl-decision-log.md` | **หัวใจ — "ทำไม"** · **gap log G1–G88** ทุกข้อมี: ปัญหา / ผลกระทบ / สิ่งที่ตัดสิน / **ผลทดสอบจริง** · หัวข้อ 0 รวม **ข้อที่กลับคำ** ไว้ที่เดียว<br>`[2026-09-23]` แยกออกมาจาก `wes-batch-pull-design.md` แล้ว**ลบไฟล์เดิมทิ้ง** — ชื่อเดิมผิดทั้ง 2 คำ ("wes" แยกไปตั้งแต่ G64 · "pull" กลับเป็น push ตั้งแต่ G59) และครึ่งไฟล์เป็นสำเนาสัญญาที่ค้างเวอร์ชันเก่า |
 | `ptl-batch-api-spec.md` (+ `.asyncapi.yaml` / `.html`) | สัญญาที่ส่งให้ vendor — **เวอร์ชัน 1.0** · 6 ชนิดที่ vendor ส่ง · **3 ชนิดที่ vendor รับ** · 4 control (freeze) · 13 ignore reason · ดู [[vendor-docs-style]] ก่อนแก้ |
-| `wes-internal-api-spec.md` | เส้น HTTP ภายใน 4 เส้นระหว่าง WMS ↔ worker/Proxy |
+| `wms-internal-api-spec.md` | เส้น HTTP ภายใน 4 เส้นระหว่าง WMS ↔ worker/Proxy |
+| `wms-internal-api.openapi.yaml` (+ `.openapi.html`) | เส้นภายในฉบับ **เครื่องอ่าน** — OpenAPI 3.1 · `[ใหม่ 2026-09-24]` · HTTP ใช้ OpenAPI ส่วนฝั่ง vendor เป็นคิวจึงใช้ AsyncAPI |
 | `ptl-rabbitmq-topology.md` | exchange/queue ทั้งหมด — **§10 เป็นส่วนเดียวที่ส่งให้ vendor ได้** |
 | `wms-batch-schema.sql` / `.md` | ฝั่ง WMS (คนละทีม คนละฐาน) |
 | `ptl-schema.sql` + `ptl-database-schema.md` | ฝั่งเรา 8 ตาราง (ดู [[ptl-split-from-wes]]) |

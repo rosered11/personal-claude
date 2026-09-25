@@ -25,7 +25,7 @@ metadata:
 
 **สัญญาฉบับเครื่องอ่านคือ AsyncAPI ไม่ใช่ API Blueprint แล้ว** `[2026-09-24]`
 
-`ptl-batch-api.apib` **ถูกลบทิ้ง** เพราะ API Blueprint อธิบายได้แต่ HTTP แต่สัญญานี้เป็น RabbitMQ ล้วน ⇒ ต้องปลอม `[POST]` + path ขึ้นมา ซึ่งทำให้ **เครื่องมือเข้าใจผิดว่าเป็น REST** (Apiary โชว์ปุ่มยิง · dredd/SDK generator สร้าง HTTP client ออกมาจริง) · แทนด้วย **`ptl-batch-api.asyncapi.yaml` (AsyncAPI 3.1)** ซึ่งครอบ **3 channel 13 ชนิดข้อความ** ได้ครบ (ของเดิมครอบแค่ 6 ชนิดขาขึ้น)
+`ptl-batch-api.apib` **ถูกลบทิ้ง** `[2026-09-24]` (ยังเหลือฉบับคัดลอกชื่อ `vendor-spec.apib` ค้างอยู่อีกใบ — ผู้ใช้สั่งลบ **2026-09-25** · ตอนนี้ไม่เหลือ `.apib` ในโปรเจกต์แล้ว) เพราะ API Blueprint อธิบายได้แต่ HTTP แต่สัญญานี้เป็น RabbitMQ ล้วน ⇒ ต้องปลอม `[POST]` + path ขึ้นมา ซึ่งทำให้ **เครื่องมือเข้าใจผิดว่าเป็น REST** (Apiary โชว์ปุ่มยิง · dredd/SDK generator สร้าง HTTP client ออกมาจริง) · แทนด้วย **`ptl-batch-api.asyncapi.yaml` (AsyncAPI 3.1)** ซึ่งครอบ **3 channel 13 ชนิดข้อความ** ได้ครบ (ของเดิมครอบแค่ 6 ชนิดขาขึ้น)
 
 ```bash
 docker run --rm -v "//d/workspace/personal-claude/inbox/push-to-light:/w" -w /w   node:20-alpine npx -y @asyncapi/cli@latest validate ptl-batch-api.asyncapi.yaml
@@ -33,6 +33,15 @@ docker run --rm -v "//d/workspace/personal-claude/inbox/push-to-light:/w" -w /w 
 ผ่าน = `File ... is valid! ... don't have governance issues`
 
 **บทเรียนที่แพงที่สุดจากรอบนี้**: เครื่องมือ parse ผ่านไม่ได้แปลว่าเอกสารใช้ได้ — `.apib` เดิม **0 error 0 warning แต่ได้ 0 endpoint** มาตลอด เพราะรูปแบบพวกนี้ถือว่า markdown ที่ไม่เข้าแบบคือ "คำบรรยาย" ไม่ใช่ความผิด ⇒ **ต้องตรวจว่าได้ของออกมาครบตามจำนวนด้วยเสมอ** ไม่ใช่ดูแค่ error
+
+**เลือกรูปแบบสเปกตามชนิดของเส้น ไม่ใช่ตามความเคยชิน** `[2026-09-24]`
+
+| เส้นแบบไหน | ใช้ | ตรวจด้วย |
+|---|---|---|
+| **message-driven** (RabbitMQ) — สัญญากับ vendor | **AsyncAPI 3.1** `ptl-batch-api.asyncapi.yaml` | `asyncapi validate` + `@asyncapi/html-template` |
+| **request/response** (HTTP) — เส้นภายใน WMS ↔ worker ↔ Proxy | **OpenAPI 3.1** `wms-internal-api.openapi.yaml` | `redocly lint` + `redocly build-docs` |
+
+เคยพลาดมาแล้วกับ API Blueprint: เอารูปแบบของ HTTP ไปอธิบายสัญญาที่เป็นคิว ⇒ ต้องปลอม `[POST]` + path ขึ้นมา แล้วเครื่องมือเข้าใจผิดว่าเป็น REST · **ถ้าต้องปลอมอะไรเพื่อให้รูปแบบยอมรับ แปลว่าเลือกรูปแบบผิด**
 
 **ชุดไฟล์ส่ง vendor = 4 ตัว** `[2026-09-24]` — `ptl-batch-api-spec.md` (ต้นฉบับ ความจริงทั้งหมด) · `.asyncapi.yaml` (ให้เครื่องอ่าน) · `.html` (**ทำมือ** ให้คนอ่าน) · `.asyncapi.html` (**generate จาก `.yaml`** ห้ามแก้ด้วยมือ)
 

@@ -15,7 +15,9 @@ metadata:
 **How to apply**
 - ที่ `personal-claude` เราดูแล **สัญญา + schema + เอกสาร** เท่านั้น (ดู [[ptl-teams-and-boundaries]])
 - ถ้าเรื่องที่คุยอยู่จบลงที่ "ต้องแก้โค้ด" → **หยุดที่ข้อเสนอ** แล้วบอกผู้ใช้ให้ไปสั่งที่ repo `ptl_worker` ตาม 2 ข้อข้างบน ไม่ต้องไปแก้ไฟล์ข้ามให้
-- ของที่ยัง**ต้องตรงกันข้าม repo**: `ptl-schema.sql` ↔ `src/migrations/spc/00001_baseline_spc.sql` และ `wms-batch-schema.sql` ↔ `20-wms.sql` (ต่างกันแค่ header) — แก้ฝั่งเอกสารแล้วต้องบอกให้ repo นั้นแก้ตาม
+- ของที่ยัง**ต้องตรงกันข้าม repo**: `ptl-schema.sql` ↔ **ผลของ `src/migrations/spc/` หลัง apply ครบทุกใบ** และ `wms-batch-schema.sql` ↔ `20-wms.sql`
+  🔴 **อย่าเทียบกับไฟล์ baseline ด้วย diff ข้อความ** — ทีมนั้นใช้ goose ของใหม่มาเป็น migration ใบใหม่เสมอ (ห้ามแก้ใบที่ apply แล้ว) ⇒ baseline จะค้างอยู่ที่เดิมตลอดกาลและ diff จะหลอก
+  วิธีที่ถูก: apply ทั้ง 2 ฝั่งเข้า schema ชั่วคราวใน postgres แล้วเทียบ `information_schema` + `pg_constraint` + `pg_indexes` (คำสั่งอยู่ `README.md` หัวข้อ 6)
 - `inbox/push-to-light/_archive_app/` **ผู้ใช้สั่งให้เก็บไว้ก่อน** (2026-09-23) แม้จะเป็นสำเนาเก่ากว่า repo `ptl_worker` — อย่าเผลอลบตามกฎ [[delete-dead-things-not-archive]]
 
 ดู [[ptl-design-knowledge-base]]
