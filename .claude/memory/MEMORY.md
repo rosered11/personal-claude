@@ -1,11 +1,13 @@
 - [PTL แยกออกจาก WES แล้ว](ptl-split-from-wes.md) — standalone ตั้งแต่ 2026-09-21 · ตอนกลับมาทำ WES อย่าลากตารางของ PTL กลับเข้าไป
-- [แผนที่เอกสาร PTL](ptl-design-knowledge-base.md) — ภาพรวมระบบอยู่ที่ repo `ptl_worker` (`src/ptl-handover.md`) · gap log G1–G88 อยู่ที่ `ptl-decision-log.md` อ่านก่อนออกแบบอะไรใหม่ · โค้ดย้ายไป repo `ptl_worker` แล้ว
+- [แผนที่เอกสาร PTL](ptl-design-knowledge-base.md) — ภาพรวมระบบอยู่ที่ repo `ptl_worker` (`src/ptl-handover.md`) · gap log G1–G103 อยู่ที่ `ptl-decision-log.md` อ่านก่อนออกแบบอะไรใหม่ · โค้ดย้ายไป repo `ptl_worker` แล้ว
 - [asyncapi.yaml ผู้ใช้ดูแลเอง](asyncapi-yaml-is-hand-maintained.md) — ห้าม generate ทับ · แก้เฉพาะจุดที่จำเป็น · อย่าเกลา description ที่ผู้ใช้เขียน
 - [กติกาเอกสารที่ส่งให้ vendor](vendor-docs-style.md) — ไม่มีร่องรอยภายใน · เรียกทิศทางจากมุมผู้อ่าน · แสดงเวอร์ชันที่เดียว
 - [แก้ app ของ PTL ต้องไปทำที่ repo ptl_worker](ptl-app-changes-go-to-ptl-worker-repo.md) — เปิด Claude Code ที่ `D:\workspace\ptl_worker` แล้วสั่งเป็นภาษาธรรมชาติ ปล่อยให้มันเลือก agent เองตาม CLAUDE.md
-- [ทีมและเส้นแบ่งของงาน PTL](ptl-teams-and-boundaries.md) — WMS คนละทีมคนละฐาน · โค้ด worker ย้ายไปอีกทีม (2026-09-23) · vendor ยังไม่เริ่มเขียนโค้ด ⇒ ยังแก้สัญญาได้อิสระ
+- [ทีมและเส้นแบ่งของงาน PTL](ptl-teams-and-boundaries.md) — WMS คนละทีมคนละฐาน · โค้ด worker ย้ายไปอีกทีม (2026-09-23) แต่**กติกายังอยู่ที่เอกสารเรา** · `ptl_worker/src` เป็นระบบจำลอง · vendor ยังไม่เริ่มเขียนโค้ด
 - [พิสูจน์ด้วยของที่รันจริง](prove-with-a-running-system.md) — ทุกครั้งที่รันจริงเจอบั๊กที่อ่านโค้ดไม่เจอ
 - [สเปกต้องบอกว่าใครเป็นเจ้าของอะไร](specs-must-say-who-owns-what.md) — source · เปลี่ยนเมื่อไร · เคลียร์เมื่อไร · ใคร implement ที่ไหน
 - [ไม่ได้ใช้ให้ตัด ไม่ใช่เขียนกติกาเพิ่ม](cut-what-is-not-used.md) — เจอ 2 ชั้นเอกสารไม่ตรงกัน ให้ถามก่อนว่ากติกานั้นยังจำเป็นไหม · ค่าที่ derive ซ้ำ = ตัดได้เลย
 - [ของที่เลิกใช้ให้ลบ ไม่ใช่เก็บ](delete-dead-things-not-archive.md) — และตามเก็บ reference ที่ชี้ไปหามันให้หมด
+- [push-to-light เก็บแค่ version ล่าสุด](push-to-light-is-latest-version-only.md) — ไม่ commit ที่ repo นี้ · ห้ามพึ่ง git เป็นตัวกู้ ⇒ `cp` ไว้ scratchpad ก่อนลบบล็อกใหญ่ทุกครั้ง
 - [memory อยู่ใน repo](memory-lives-in-the-repo.md) — ของจริงที่ `.claude/memory/` (git track) · path ของ runtime เป็น junction ชี้มาที่นี่
+- [ยืนยันเครื่องมือก่อนเชื่อผล](verify-the-checker-first.md) — grep/สคริปต์นับโกหกบ่อย · แยกคอมเมนต์+เทสต์ออกก่อนสรุปเลข · จงใจทำให้พังเพื่อดูว่า gate กัดจริง
