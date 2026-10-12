@@ -10,5 +10,6 @@
 - [ของที่เลิกใช้ให้ลบ ไม่ใช่เก็บ](delete-dead-things-not-archive.md) — และตามเก็บ reference ที่ชี้ไปหามันให้หมด
 - [push-to-light เก็บแค่ version ล่าสุด](push-to-light-is-latest-version-only.md) — ไม่ commit ที่ repo นี้ · ห้ามพึ่ง git เป็นตัวกู้ ⇒ `cp` ไว้ scratchpad ก่อนลบบล็อกใหญ่ทุกครั้ง
 - [memory อยู่ใน repo](memory-lives-in-the-repo.md) — ของจริงที่ `.claude/memory/` (git track) · path ของ runtime เป็น junction ชี้มาที่นี่
+- [handoff ต้องอยู่ในไฟล์ ไม่ใช่ในแชท](handoff-goes-in-the-file-not-the-chat.md) — ข้อความ cross-session หายได้เงียบ ๆ (เสีย G134/G136/G137 ไปทั้งชุด) · "ส่งสำเร็จ" ≠ "ถึงมือ" · `ListAgents` ก่อนส่งทุกครั้ง ชื่อ session เปลี่ยนบ่อย
 - [ยืนยันเครื่องมือก่อนเชื่อผล](verify-the-checker-first.md) — grep/สคริปต์นับโกหกบ่อย · แยกคอมเมนต์+เทสต์ออกก่อนสรุปเลข · จงใจทำให้พังเพื่อดูว่า gate กัดจริง
 - [โค้ด Go ให้ AI อ่านออก](ai-readable-go-code.md) — กติกา 7 ข้อจากบทความ satire AI-proof Go · ฉบับเต็ม+prompt ส่ง ptl_worker อยู่ `outbox/`
