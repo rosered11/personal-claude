@@ -11,3 +11,4 @@
 - [push-to-light เก็บแค่ version ล่าสุด](push-to-light-is-latest-version-only.md) — ไม่ commit ที่ repo นี้ · ห้ามพึ่ง git เป็นตัวกู้ ⇒ `cp` ไว้ scratchpad ก่อนลบบล็อกใหญ่ทุกครั้ง
 - [memory อยู่ใน repo](memory-lives-in-the-repo.md) — ของจริงที่ `.claude/memory/` (git track) · path ของ runtime เป็น junction ชี้มาที่นี่
 - [ยืนยันเครื่องมือก่อนเชื่อผล](verify-the-checker-first.md) — grep/สคริปต์นับโกหกบ่อย · แยกคอมเมนต์+เทสต์ออกก่อนสรุปเลข · จงใจทำให้พังเพื่อดูว่า gate กัดจริง
+- [โค้ด Go ให้ AI อ่านออก](ai-readable-go-code.md) — กติกา 7 ข้อจากบทความ satire AI-proof Go · ฉบับเต็ม+prompt ส่ง ptl_worker อยู่ `outbox/`
