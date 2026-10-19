@@ -54,31 +54,12 @@ $env:CLAUDE_LABEL="personal-put-to-light"; claude --resume 3f70402c-3fe1-4be4-9f
 - claude --resume bc5b58c0-8a42-4ea3-b796-f0c7727ef53a -> (MatDoc)
 - claude --resume fd097914-d31e-4a33-838e-0e1d16ca1cc9 -> (Kafka Solution)
 - claude --resume 8e1a37f2-91ec-4580-accb-99804be48e14 -> Estimate Cost ELK
+$env:CLAUDE_LABEL="personal-estimate-oms-resource-for-infra"; claude --resume 7913fb21-6bfa-4c2f-b0dd-91d77d133506
 
 
-client_ref
-round_ref 
+## Note
 
-คุยรายละเอียดเพิ่มเกียวกับ mapping box 
-
-จำเปนไหม
-
-- ในการใช้งานครื่อง put to light สูงสุดมีกี่ sku ต่อ store ต่อ วัน
-- สอบถาม เพิ่มว่า outbox กับ alert อยากให้ทำที่ worker ติดไรไหม / 
-- team wms อาจจะไม่ทำ alert เรา handle อะไรได้บ้าง /
-- wms ยังจำเป็นต้องมี outbox อยู่ไหม /
-- อยากปรับ UI worker ใหม่ ไม่ว่าเปน ด่าน 1 หรือ ขาขึ้น ขาลง ควรจะอ่านแล้วเข้าใจกว่านี้ แล้ว ผมรู้
-- ถ้าเราส่งข้อมูลด้วย outbox pattern เรายังจำเป็นต้องมี version อยู่ไหม /
-- routing key ใช้ทำอะไรบ้าง /
-- message_id กับ event_id ยุบรวมเหลือตัวเดียวได้ไหม /
-- ตอนนี้เรา split project put to light ออกมาจาก wes เป็น standalone แล้ว อาจจะไม่ต้อง implement project นี้ใน solution ของ wes แล้ว
-    แต่คุณเก็บ knowledge ทั้งหมด กับ journey ที่เกิดขึ้นไว้เป็น memory ด้วยเมื่อไหร่เริ่มทำ wes คุณต้องมี best solution พร้อมสำหรับงานนี้
-    แล้วก็ อาจจะต้องลองลด table ที่ไม่ได้ใช้ออก ที่ยังคงติดเรื่อง wes อยู่ /
-
-
-- ปรับ spec ใหม่ ไม่ว่าเปน ด่าน 1 หรือ ขาขึ้น ขาลง ควรจะอ่านแล้วเข้าใจกว่านี้, qty ตระกูล, G66 อะไรพวกนี้ vendor อ่านไม่เข้าใจ, พวกขีดค่า หรือ update version ไม่ต้องมี เราจะแสดง version update อย่างเดียว แล้วก็ช่วยปรับ schema เป็น version 1.0 หน่อยเพราะเรายังไม่ได้ให้ vendor ดูอาจจะยังไม่ต้อง track /
-
-- routing key จำเป็นไหม /
-- adapter_key จำเป็นไหม แล้วจะขึ้นค่าใหม่อีกทีเมื่อไหร่ /
-- ผมแค่อยากลบ ตะกูลออกจาก qty เพราะ key อื่นไม่เหนมี
-- framework structure code golang + UI
+ทำเอกสาร focus 2 system: CFW, CRL Muji
+    - เน้นเรื่องการประเมิน resource ที่จะใช้
+    - ต้อง list ให้รู้ว่าระบบต้องใช้อะไรบ้าง และใช้เพราะอะไร (end to end เช่น WMS,SPC,TMS)
+    
