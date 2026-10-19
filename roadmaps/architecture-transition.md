@@ -1,8 +1,8 @@
 # Architecture Transition Roadmap
 **Goal:** Backend Developer → Software Architecture Specialist
 **Current Phase:** Intermediate
-**Last Updated:** 2026-09-22
-**Consultation Count:** 16
+**Last Updated:** 2026-10-16
+**Consultation Count:** 17
 
 ---
 
@@ -187,6 +187,24 @@ request's real blocker is "no methodology exists yet" rather than "the wrong opt
 chosen," since the deliverable in that case is a repeatable worksheet/process, not a
 single answer.
 
+Consultation 17 (P034/D039, 2026-10-16) is your second capacity-planning request (after P033/D038) and
+the first on the Sprint-OMS platform itself: "what resources does OMS need, how much, and what
+happens at N transactions," for an infra team, with every request justified and every two-sided
+choice shown as a trade-off. There was again no production volume, so the deliverable was a
+parametric model (one per-order unit-economics engine feeding three topologies) rather than a
+number -- the D038 lesson reused deliberately, not by accident. The new axis is *infrastructure
+tenancy*: isolate by deployment unit (Microservices) vs pool the shared tier (Modular Monolith,
+D020's corollary). Pool-by-default won, but not outright: isolation was kept exactly where two
+workloads need *conflicting resource classes* -- Redis cache needs allkeys-lru while Hangfire job
+storage needs noeviction; log data needs no HA while OLTP does -- so the result is a HYBRID
+(2 PostgreSQL servers, 2 Redis instances), not a pick-one. The most valuable move was reading the
+live code instead of the planning doc: the doc said outbox dispatch is synchronous, the code had
+moved it to Hangfire on Redis with the full payload as job arguments, which turned a 0.7 GB Redis
+problem into an 8 GB one depending on a retention default nobody had chosen. Next step: before
+your next sizing request, list for each shared resource the *class properties* (eviction policy,
+durability, write pattern, criticality) of every workload on it -- conflicting properties, not
+service names, are what justify a separate instance.
+
 ## Skill Domains
 
 ### Distributed Systems
@@ -201,7 +219,7 @@ single answer.
 ### Data Architecture Patterns
 - [x] CQRS (Command Query Responsibility Segregation) — separating reads from writes — **encountered in D018 (OMS read/write split: command handlers vs order_status_view projections). Extended in D036 (RFID container-contents relationship): CQRS's read/write split reasoning applied without adopting the full pattern -- fanout-scope discipline (push only the query direction a real-time consumer needs) borrowed into a single relational table rather than building two separately maintained projections, since actual write volume did not justify the fuller machinery**
 - [x] Event Sourcing — state as a sequence of events — **first genuine application in D037 (RFID location_contents): a materialized read projection folded from the same write-path events that already update epc_registry, not a live query against the write model -- the platform's first continuously-refreshed projection, distinct from every prior bounded/versioned MovementManifest**
-- [ ] Database per service pattern
+- [x] Database per service pattern -- **evaluated and declined as a default in D039 (OMS infra sizing): one PG server per service would triple HA cost for a workload under 1 vCPU average and contradict D020; kept only as an escalation path when a service has a genuinely different durability or compliance class (here: log data on a separate no-HA server)**
 - [ ] Polyglot persistence
 
 ### System Design Fundamentals
@@ -255,6 +273,10 @@ single answer.
 - [x] Cost modeling for architecture decisions — **first applied in D038 (Elastic/Azure sizing): translating a storage-footprint estimate into a procurement-ready number required separating hot-tier (vCPU/RAM-driving) from warm/cold-tier (disk-SKU-driving) capacity, since infra buys different Azure node types for each**
 - [x] Kubernetes deployment topology for stateful workers — **encountered in D020 (single-replica outbox worker with terminationGracePeriodSeconds, graceful shutdown via CancellationToken, vs stateless API replicas with HPA)**
 - [x] Data-store capacity-planning methodology — sizing a search/analytics store (Elasticsearch) from first principles when no query patterns or volumes are yet known — **first applied in D038: event-volume/retention-driven hot-warm-cold tiered sizing, gated by a per-source query-scope classification, chosen specifically because its inputs were answerable today while a purely query-driven sizing approach's inputs were not**
+- [x] Capacity planning from per-unit economics -- deriving rows, bytes, calls, jobs and CPU *per business transaction* from the code, then scaling by volume scenarios, with every non-code number tagged as an assumption and paired with a measurement method and a sensitivity table -- **first applied to a multi-resource system in D039 (PostgreSQL + Redis + AKS + OTel/ELK); cross-checked against an independent anchor (peak 2.78 orders/s vs the 3-5 orders/s stated for 50K orders/day)**
+- [x] Shared-vs-isolated resource tenancy -- isolate where two workloads need conflicting *resource classes* (Redis eviction policy allkeys-lru vs noeviction; HA vs no-HA durability class), pool everything else -- **first stated as an explicit rule in D039**
+- [x] Connection-pool and worker-pool budgeting -- pods x pool size x connection strings vs the database max_connections, and Hangfire workers (5 x ProcessorCount, so 5 for a 1-vCPU-limit container) vs jobs/s x latency -- **found unset in the Sprint-OMS code in D039; pool/worker saturation, not CPU, is the first bottleneck to hit**
+- [x] Stale-documentation detection by reading live code -- a planning doc said outbox dispatch was synchronous with no worker; the code had moved it to Hangfire on Redis, changing the Redis memory estimate by roughly 10x -- **D039**
 
 ---
 
@@ -350,6 +372,14 @@ single answer.
 | Mandatory per-item classification gate as a way to fold in a non-primary lens's discipline -- every candidate Elasticsearch index must pass a FULL_MIRROR-vs-SCOPED_PROJECTION check before sizing, so CQRS's scoping instinct constrains the winning EDA methodology instead of being an optional afterthought | 2026-09-22 | P033/D038/S038 | Data Architecture Patterns | Medium |
 | Hot/warm/cold tiered capacity sizing -- splitting a retention curve so hot-tier GB drives vCPU/RAM node sizing and warm/cold-tier GB drives disk-SKU choice, because a cloud procurement decision needs both numbers, not one blended total | 2026-09-22 | P033/D038/S038 | Cloud & Infrastructure | High |
 | Producing a worksheet/methodology instead of a number when the real blocker is "no capacity-planning process exists yet," not "the wrong option was chosen" -- the deliverable's shape itself is part of the architectural judgment | 2026-09-22 | P033/D038/S038 | Organizational & Communication Skills | Medium |
+| Infrastructure tenancy as a lens axis -- isolate by deployment unit (Microservices) vs pool the shared tier (Modular Monolith); a fresh contrast not about invariants, transport, abstraction timing or sizing scope | 2026-10-16 | P034/D039/S039 | Architectural Patterns | High |
+| Isolate by resource-class conflict, not by service name -- Redis eviction policy (allkeys-lru vs noeviction) and PostgreSQL durability class (HA vs no-HA for log data) as the only justified reasons to split an instance | 2026-10-16 | P034/D039 | Cloud & Infrastructure | High |
+| Hangfire storage on Redis -- job arguments carry the full payload, so succeeded-job retention (24 h vs 2 h) changes Redis memory about 10x; noeviction requirement; cluster-safe key prefix | 2026-10-16 | P034/D039 | Event-Driven Architecture | High |
+| Npgsql Maximum Pool Size default (100 per connection string per pod) vs Azure PostgreSQL max_connections per SKU; PgBouncer as a later lever, explicit pool size as the first | 2026-10-16 | P034/D039 | Cloud & Infrastructure | High |
+| Worker-slot capacity (jobs/s x latency x burst vs workers) as the first bottleneck of an async outbound path, ahead of CPU | 2026-10-16 | P034/D039/S039 | Distributed Systems | Medium |
+| Scale-up-before-campaign vs provision-for-peak -- cloud elasticity (PG vCore change, cluster autoscaler) traded against a runbook-dependency risk | 2026-10-16 | P034/D039 | Cloud & Infrastructure | Medium |
+| Parametric model with tagged assumptions, measurement queries and a sensitivity table as the deliverable when no production metrics exist (second use after D038, now across several resources) | 2026-10-16 | P034/D039/S039 | Organizational & Communication Skills | High |
+| Reading live code over trusting a planning doc (stale outbox description) and reusing a prior methodology (S038) for the sub-problem it already solves instead of re-deriving it | 2026-10-16 | P034/D039 | Organizational & Communication Skills | Medium |
 
 ---
 
@@ -1285,6 +1315,51 @@ the right lens.
 - Practice: next time a request states or implies "I don't know where to start" rather
   than presenting two options to choose between, check whether the real deliverable
   should be a decision-support process/tool rather than a single decision.
+
+---
+
+### Consultation: OMS Infrastructure Resource Estimation (2026-10-16) -- KB: P034 / D039 / S039
+
+This was a capacity-planning request for the infra team with no production volume. Here is what to study:
+
+**1. Resource-Class Conflicts, Not Service Names, Justify Isolation**
+The decision was neither "one shared everything" nor "one per service." Two shared-tier workloads
+had properties that cannot coexist on one instance: Redis cache wants an eviction policy
+(`allkeys-lru`) that would silently delete Hangfire jobs, which require `noeviction`; and `spc_log`
+writes about as many bytes per order as the whole OLTP database yet needs no zone-redundant HA, so
+pooling it makes you pay HA twice on low-value data. Everything without such a conflict stays pooled.
+- Study: Redis eviction policies and `maxmemory-policy`; Azure PostgreSQL Flexible Server HA vs
+  non-HA cost model; the "noisy neighbour" and "bulkhead" patterns.
+- Practice: take any shared resource in a system you know and write, per workload, its eviction/
+  durability/criticality/write-pattern; flag only the pairs whose properties conflict.
+
+**2. Per-Unit Economics as the Engine of a Capacity Model**
+Every number came from one chain: rows per order x bytes per row x orders per day x retention, calls
+per order x CPU per call, jobs per order x bytes per job x retention. Changing one assumption moves
+only the outputs that depend on it, which is what makes the sensitivity table (and your conversation
+with infra) cheap. Cross-check against an independent anchor: the computed peak (2.78 orders/s at
+50K orders/day) matched the 3-5 orders/s the earlier design stated.
+- Study: Google SRE Workbook chapter on capacity planning; "back-of-the-envelope" estimation in
+  System Design Interview (Alex Xu).
+- Practice: re-run `oms_resource_estimator.py` with your measured bytes/row and jobs/order and see
+  which SKU choices flip; the ones that do not flip are safe to request now.
+
+**3. Pool Budgets: Connections and Workers Saturate Before CPU**
+Npgsql's default pool is 100 per connection string per pod, so 18 pods can theoretically open 3,600
+connections against a 1,718 limit; Hangfire's default is 5 workers per processor, which in a
+1-vCPU-limit container is 5 -- enough at 50K orders/day, short at 150K. Neither is set in the code.
+- Study: Npgsql connection pooling docs; Azure PostgreSQL built-in PgBouncer (transaction mode);
+  Hangfire `WorkerCount`; Little's law (concurrency = rate x latency).
+- Practice: compute concurrency = jobs/s x latency for your busiest async path and compare with
+  worker slots before looking at CPU.
+
+**4. Trust Code Over the Planning Doc, and Reuse What You Already Built**
+The scaling plan said outbox dispatch was synchronous; the code had moved it to Hangfire/Redis with
+the full payload as arguments. That one fact changed the Redis estimate by about 10x and revealed a
+retention default as the biggest cost lever. Separately, the Elasticsearch portion was not re-derived:
+it was handed to the S038 methodology from P033.
+- Practice: when a document and a code path disagree, the estimate follows the code; write the
+  disagreement down for the doc owner. When a sub-problem already has a KB snippet, link it.
 
 ---
 

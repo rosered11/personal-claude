@@ -4,10 +4,10 @@ description: inbox/oms/req.md gets overwritten and reused across unrelated OMS c
 type: feedback
 ---
 
-The file `inbox/oms/req.md` has been reused at least twice for genuinely different requests: on
+The file `inbox/oms/req.md` has been reused at least three times for genuinely different requests: on
 2026-07-22 it asked about database load risk from BU growth (became P020/D025/S025), and on
 2026-07-31 it asked for a full six-area, source-code-only architecture audit (became P024/D029/
-S029). Both runs are recorded in `knowledge-base/index.md`'s changelog footer referencing the same
+S029), and on 2026-10-16 it asked for a back-of-the-envelope infrastructure resource estimate (PostgreSQL/Redis/OTel sizing, output to output/oms-estimate-resource) which became P034/D039/S039. All runs are recorded in `knowledge-base/index.md`'s changelog footer referencing the same
 inbox path with different content.
 
 **Why:** If a future consultation is asked to "process inbox/oms/req.md" it is not safe to assume it

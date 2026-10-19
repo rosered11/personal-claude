@@ -33,3 +33,13 @@ changed.
 **How to apply:** When a new OMS problem arrives, read P013/P015/P018/P020/P023-lineage KB entries
 first, but verify every claim against the live Sprint-OMS source tree rather than trusting the KB
 record as still-current -- the KB records what was true at audit time, not what is true now.
+
+**Update 2026-10-16 (P034/D039/S039):** third OMS capacity/infra consultation (first one about
+resource sizing, not code or DB-load design). Findings that outlive the consultation: (1) the planning
+doc `docs/oms/oms-database-scaling-plan.md` section 2.1 is stale -- outbox dispatch now runs as
+Hangfire jobs on Azure Managed Redis (full `OutboxDispatchRequest.RequestPayload` in job args), so
+check code before quoting that doc; (2) Npgsql `Maximum Pool Size` and Hangfire `WorkerCount` are
+unset; (3) observability (OTel/ELK) is designed in `monitoring/` and `kube-oms/` but commented out in
+`Order.API/Program.cs`; (4) `spc_log` request logging writes about as many bytes per order as the
+whole OLTP DB. Decision D039 (HYBRID: 2 PG servers + 2 Redis, pool otherwise) extends D020/D025; a
+future sizing request with real volumes should UPDATE P034 (re-run S039), not create a new P-number.

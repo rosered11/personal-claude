@@ -192,3 +192,17 @@ plus a cross-cutting, non-axis deciding factor worth checking on every
 consultation: **input-availability** (does this lens's required input
 exist yet, independent of which mechanism is "better"), first decisive in
 D038 and likely to matter most on planning/estimation problems.
+
+**Update (2026-10-16, D039)**: a tenth axis -- **infrastructure tenancy: isolation vs pooling**
+(D039: Microservices vs Modular Monolith, on an OMS capacity-planning problem). Neither lens
+disagreed about the workload; they disagreed about whether each service/concern gets its own
+PostgreSQL/Redis/node pool. Pool-by-default won (D020 corollary, small team, sub-1-vCPU average
+load), but the deciding factor was a new one: **isolate only where two workloads need conflicting
+resource classes** (Redis eviction policy allkeys-lru vs noeviction for cache vs Hangfire;
+HA vs no-HA durability class for OLTP vs log data) -- a structural conflict that tuning cannot
+remove, not a service boundary. Result was a HYBRID, so this is a "fold in the losing lens exactly
+where evidence demands it" blend. This is the second planning/estimation problem (after D038) and
+again the useful pre-step was producing a parametric model plus sensitivity table instead of a
+single number. Axes tally now: decision-vs-transport, evaluate-and-reject, layer, consistency-
+tolerance, premature-abstraction, query-shape, declared-vs-self-asserted, sizing-scope,
+infra-tenancy (isolation vs pooling).
